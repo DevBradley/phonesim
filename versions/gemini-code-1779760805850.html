@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Device Workspace Simulation</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #121212;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #e0e0e0;
+            --text-muted: #777777;
+            --accent: #444444;
+            --accent-active: #aaaaaa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Diagnostics Control Panel */
+        #control-panel {
+            height: 180px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            z-index: 10;
+            padding: 12px;
+            gap: 15px;
+        }
+
+        .panel-section {
+            flex: 1;
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background-color: var(--bg-primary);
+            overflow-y: auto;
+        }
+
+        .panel-title {
+            font-size: 11px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 4px;
+            margin-bottom: 2px;
+            font-weight: bold;
+        }
+
+        .panel-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        select, input, button {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 5px 10px;
+            font-size: 12px;
+            font-family: inherit;
+            outline: none;
+            cursor: pointer;
+        }
+
+        input[type="text"] {
+            cursor: text;
+        }
+
+        button:hover {
+            background: var(--border-color);
+            color: #fff;
+        }
+
+        button:active {
+            background: var(--accent-active);
+            color: #000;
+        }
+
+        .log-line {
+            font-size: 11px;
+            color: #00ff66;
+            line-height: 1.4;
+        }
+
+        /* Workspace Viewport */
+        #workspace {
+            flex: 1;
+            display: flex;
+            gap: 40px;
+            padding: 30px;
+            overflow-x: auto;
+            align-items: center;
+            background-color: var(--bg-primary);
+        }
+
+        /* Phone Hardware Frame Container */
+        .device-frame {
+            position: relative;
+            width: 330px;
+            height: 660px;
+            border-radius: 44px;
+            padding: 12px;
+            box-shadow: 0 25px 60px rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            box-sizing: border-box;
+        }
+
+        /* Absolute Hardware SVG Bezels and Camera Layouts */
+        .hardware-svg-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        /* Device Inner Display Layer */
+        .device-screen {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 34px;
+            overflow: hidden;
+            background-color: #000;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Dynamic Wallpaper Background */
+        .device-wallpaper-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            pointer-events: none;
+        }
+        .device-wallpaper-container svg {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Screen Interface Layout */
+        .screen-interface {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Hardware Accommodating Status Bar */
+        .status-bar {
+            height: 42px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 26px;
+            font-size: 11px;
+            font-weight: bold;
+            color: #ffffff;
+            z-index: 60;
+        }
+
+        .app-workspace-body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Universal Bottom Gesture Home Bar */
+        .home-bar-region {
+            height: 22px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 60;
+            cursor: pointer;
+        }
+        .home-bar-element {
+            width: 110px;
+            height: 5px;
+            background-color: rgba(255,255,255,0.7);
+            border-radius: 3px;
+        }
+
+        /* Application Grid Interface */
+        .homescreen-view {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+            padding: 20px;
+            height: 100%;
+            align-content: start;
+        }
+
+        .app-launcher {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .app-launcher-icon {
+            width: 52px;
+            height: 52px;
+            border-radius: 13px;
+            background-color: rgba(15,15,15,0.85);
+            border: 1px solid rgba(255,255,255,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            color: #fff;
+        }
+
+        .version-tag {
+            position: absolute;
+            top: -4px;
+            right: -2px;
+            background-color: #ff3b30;
+            color: #ffffff;
+            font-size: 8px;
+            padding: 1px 4px;
+            border-radius: 8px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+        }
+
+        .app-launcher-label {
+            font-size: 10px;
+            color: #ffffff;
+            text-align: center;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.9);
+            font-weight: 500;
+            width: 68px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* Generic App Window Architecture */
+        .app-window {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--bg-secondary);
+            display: flex;
+            flex-direction: column;
+            z-index: 15;
+        }
+
+        .app-window-header {
+            height: 44px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 14px;
+            font-size: 12px;
+            font-weight: bold;
+            background-color: var(--bg-tertiary);
+        }
+
+        .app-window-content {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--bg-secondary);
+        }
+
+        /* --- Social Media V1 & V2 Specific Architecture --- */
+        .soc-auth-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 25px;
+            gap: 14px;
+            height: 100%;
+        }
+        .soc-main-screen {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            overflow: hidden;
+        }
+        .soc-nav-tabs {
+            display: flex;
+            border-bottom: 1px solid var(--border-color);
+            background-color: var(--bg-tertiary);
+        }
+        .soc-tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            font-size: 11px;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+        .soc-tab.active {
+            color: var(--text-main);
+            border-bottom: 2px solid var(--accent-active);
+            font-weight: bold;
+        }
+        .soc-timeline {
+            flex: 1;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        .soc-post {
+            border: 1px solid var(--border-color);
+            background-color: var(--bg-primary);
+            padding: 10px;
+            border-radius: 6px;
+        }
+        .soc-handle {
+            color: #4da6ff;
+            font-size: 11px;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        /* V2 Short-form Reels Tab Layout */
+        .reels-feed-container {
+            flex: 1;
+            overflow-y: scroll;
+            scroll-snap-type: y mandatory;
+            background-color: #000;
+        }
+        .reel-slide {
+            height: 100%;
+            width: 100%;
+            scroll-snap-align: start;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .reel-media-mock {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        .reel-overlay-details {
+            position: relative;
+            z-index: 5;
+            background: linear-gradient(transparent, rgba(0,0,0,0.95));
+            padding: 20px 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .reel-author {
+            color: #ffcc00;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .reel-description {
+            font-size: 11px;
+            color: #ffffff;
+            line-height: 1.4;
+        }
+
+        /* V2 Messaging Channel Interface */
+        .dm-channels-list {
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+            gap: 8px;
+        }
+        .channel-row {
+            padding: 12px;
+            border: 1px solid var(--border-color);
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .chat-view-container {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        .chat-log {
+            flex: 1;
+            padding: 12px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .chat-bubble {
+            max-width: 80%;
+            padding: 8px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        .chat-bubble.sent {
+            background-color: #333333;
+            color: #fff;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+        .chat-bubble.received {
+            background-color: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+        }
+
+        /* --- Contacts V2 Specific Layout --- */
+        .contacts-creator-box {
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            background-color: var(--bg-tertiary);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .contacts-list-container {
+            flex: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        .contact-card {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid var(--border-color);
+            gap: 14px;
+        }
+        .contact-monogram-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #3a3a3a;
+            border: 1px solid #555;
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .contact-meta {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .contact-name-display {
+            font-size: 13px;
+            font-weight: bold;
+            color: #fff;
+        }
+        .contact-num-display {
+            font-size: 11px;
+            color: var(--text-muted);
+        }
+        .contact-action-triggers {
+            display: flex;
+            gap: 6px;
+        }
+
+        /* --- Dialer / System Mock Utilities V1 --- */
+        .dialer-output {
+            padding: 20px;
+            font-size: 24px;
+            text-align: center;
+            letter-spacing: 2px;
+            height: 60px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .dialer-keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            padding: 20px;
+            justify-items: center;
+        }
+        .dial-btn {
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+        }
+
+        /* Wallpaper Store UI */
+        .wallpaper-picker-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 12px;
+        }
+        .wallpaper-option-card {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            cursor: pointer;
+            height: 100px;
+            background: #000;
+        }
+        .wallpaper-option-card:hover {
+            border-color: var(--text-main);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="control-panel">
+        <div class="panel-section" style="max-width: 320px;">
+            <div class="panel-title">Hardware Provisioning Server</div>
+            <div class="panel-row">
+                <span style="font-size:12px; width:70px;">Model:</span>
+                <select id="provision-model" style="flex:1;">
+                    <option value="12">Model 12 (Wide Notch)</option>
+                    <option value="13">Model 13 (Narrow Notch)</option>
+                </select>
+            </div>
+            <div class="panel-row">
+                <span style="font-size:12px; width:70px;">Chassis:</span>
+                <select id="provision-color" style="flex:1;">
+                    </select>
+            </div>
+            <button id="btn-spawn-device" style="margin-top:auto; font-weight:bold;">Provision Simulated Device</button>
+        </div>
+
+        <div class="panel-section">
+            <div class="panel-title">Centralized Network Link Monitoring Logs</div>
+            <div id="network-log"></div>
+        </div>
+    </div>
+
+    <div id="workspace"></div>
+
+    <script>
+        // Centralized Network Hub Architecture
+        const NetworkHub = {
+            devices: {},
+            socialPosts: [],
+            networkMessages: [],
+            logs: [],
+
+            init() {
+                this.log("Centralized Network Link initialized successfully System Operational.");
+                // Inject initial mock global social posts matching structure
+                this.socialPosts.push(
+                    { sender: "@net_admin", content: "Welcome to the V1 routing architecture simulation framework." },
+                    { sender: "@cyber_node", content: "Node 12 and Node 13 links reporting nominal bandwidth status lines." }
+                );
+            },
+
+            log(text) {
+                const timestamp = new Date().toLocaleTimeString();
+                this.logs.push(`[${timestamp}] ${text}`);
+                if(this.logs.length > 25) this.logs.shift();
+                
+                const logBox = document.getElementById('network-log');
+                if(logBox) {
+                    logBox.innerHTML = this.logs.map(l => `<div class="log-line">${l}</div>`).join('');
+                    logBox.scrollTop = logBox.scrollHeight;
+                }
+            },
+
+            broadcastSocialPost(sender, content) {
+                this.socialPosts.unshift({ sender, content });
+                this.log(`Global Broadcast from ${sender}: "${content.substring(0,20)}..."`);
+                // Refresh all devices currently viewing social app feeds
+                Object.values(this.devices).forEach(d => {
+                    if(d.currentApp === 'social') {
+                        d.refreshSocialFeed();
+                    }
+                });
+            },
+
+            routeDirectMessage(fromHandle, toHandle, text) {
+                this.networkMessages.push({ from: fromHandle, to: toHandle, body: text, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
+                this.log(`Routed private message link: ${fromHandle} -> ${toHandle}`);
+                Object.values(this.devices).forEach(d => {
+                    if(d.currentApp === 'social') {
+                        d.refreshChatLogs();
+                    }
+                });
+            }
+        };
+
+        // Complete Hardware Color Map Matrix matching specification rules
+        const HardwareColorMatrix = {
+            "12": [
+                { name: "Black", code: "#1c1c1e" },
+                { name: "White", code: "#f2f2f7" },
+                { name: "Blue", code: "#274257" },
+                { name: "Green", code: "#e2ebda" },
+                { name: "Product RED", code: "#ba0c2f" }
+            ],
+            "13": [
+                { name: "Midnight", code: "#171e26" },
+                { name: "Starlight", code: "#faf6f0" },
+                { name: "Blue", code: "#3c5b74" },
+                { name: "Pink", code: "#fae0e4" },
+                { name: "Alpine Green", code: "#374636" }
+            ]
+        };
+
+        // Embedded SVG Wallpapers Catalog
+        const SVGWallpapers = {
+            "matrix": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 600" preserveAspectRatio="none"><rect width="100%" height="100%" fill="#050a05"/><path d="M10 0 v600 M50 0 v600 M90 0 v600 M130 0 v600 M170 0 v600 M210 0 v600 M250 0 v600 M290 0 v600" stroke="#00ff33" stroke-width="0.5" opacity="0.15" stroke-dasharray="10 15"/><circle cx="160" cy="300" r="120" fill="none" stroke="#00ff33" stroke-width="1" opacity="0.2"/><circle cx="160" cy="300" r="60" fill="none" stroke="#00ff33" stroke-width="0.5" opacity="0.1"/></svg>`,
+            "cyber": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 600" preserveAspectRatio="none"><rect width="100%" height="100%" fill="#0a0514"/><path d="M-50 400 L160 200 L370 400 M-50 450 L160 250 L370 450" fill="none" stroke="#ff0055" stroke-width="2" opacity="0.4"/><path d="M160 0 L160 600" fill="none" stroke="#00ffff" stroke-width="1" opacity="0.3" stroke-dasharray="5 5"/><polygon points="160,180 220,280 100,280" fill="none" stroke="#00ffff" stroke-width="1.5" opacity="0.5"/></svg>`,
+            "mono": `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 600" preserveAspectRatio="none"><rect width="100%" height="100%" fill="#111111"/><path d="M0 0 L320 600 M320 0 L0 600" stroke="#333333" stroke-width="1"/><rect x="40" y="40" width="240" height="520" fill="none" stroke="#222222" stroke-width="2"/></svg>`
+        };
+
+        // Short form global content database for V2 social reels view
+        const MockShortFormReels = [
+            { author: "@tech_guru", description: "Unboxing the brand new simulated model 13 terminal array! Code structure looks clean. #hardware #retro" },
+            { author: "@matrix_runner", description: "Cascading code fields compiled successfully across isolated local device channels. Watch this scroll snap!" },
+            { author: "@design_io", description: "Crafting beautiful pure inline SVG hardware wraps for responsive layouts. Monospace fonts forever." }
+        ];
+
+        // Individual Phone Emulation Class
+        class SimulatedDevice {
+            constructor(id, model, colorName, colorCode) {
+                this.id = id;
+                this.model = model; // "12" or "13"
+                this.colorName = colorName;
+                this.colorCode = colorCode;
+                this.currentApp = null; // null represents homescreen view state
+                this.activeSocialUser = null; 
+                this.selectedChatHandle = null;
+                this.activeSocialTab = 'feed'; // 'feed', 'messages', 'reels'
+                this.currentWallpaperKey = 'matrix';
+                
+                // Device specific contacts collection (V2 feature)
+                this.contacts = [
+                    { name: "Echo Node", number: "555-0199" },
+                    { name: "System Admin", number: "555-9000" }
+                ];
+
+                this.domElement = null;
+                this.buildHardwareFrameDOM();
+            }
+
+            buildHardwareFrameDOM() {
+                const container = document.createElement('div');
+                container.className = 'device-frame';
+                container.style.backgroundColor = this.colorCode;
+                container.id = `device-${this.id}`;
+
+                // Append custom model specific SVG overlays to shape screen notches and chassis contours accurately
+                const isModel13 = this.model === "13";
+                const notchWidth = isModel13 ? "110" : "160";
+                const notchX = isModel13 ? "110" : "85";
+                const cameraPositionX = isModel13 ? "120" : "100";
+
+                container.innerHTML = `
+                    <svg class="hardware-svg-overlay" viewBox="0 0 330 660" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <rect x="11" y="11" width="308" height="638" rx="35" stroke="#000000" stroke-width="4"/>
+                        <path d="M ${notchX} 12 L ${notchX} 24 r 6 6 0 0 0 6 6 L ${parseFloat(notchX) + parseFloat(notchWidth) - 6} 30 r 6 -6 0 0 0 6 -6 L ${parseFloat(notchX) + parseFloat(notchWidth)} 12 Z" fill="#000000"/>
+                        <rect x="145" y="16" width="40" height="4" rx="2" fill="#222"/>
+                        <circle cx="${cameraPositionX}" cy="21" r="3.5" fill="#111"/>
+                    </svg>
+                    <div class="device-screen">
+                        <div class="device-wallpaper-container"></div>
+                        <div class="screen-interface">
+                            <div class="status-bar">
+                                <div>9:41</div>
+                                <div style="font-size:9px; letter-spacing:0.5px;">M-${this.model}</div>
+                                <div style="display:flex; gap:4px; align-items:center;">
+                                    <span>📶</span><span>🔋</span>
+                                </div>
+                            </div>
+                            <div class="app-workspace-body"></div>
+                            <div class="home-bar-region"><div class="home-bar-element"></div></div>
+                        </div>
+                    </div>
+                `;
+
+                // Handle home bar physical gesture routing back to layout core roots
+                container.querySelector('.home-bar-region').addEventListener('click', () => {
+                    this.currentApp = null;
+                    this.renderInterfaceState();
+                });
+
+                this.domElement = container;
+                this.updateWallpaperSVG();
+                this.renderInterfaceState();
+                
+                document.getElementById('workspace').appendChild(container);
+            }
+
+            updateWallpaperSVG() {
+                const wallContainer = this.domElement.querySelector('.device-wallpaper-container');
+                if(wallContainer) {
+                    wallContainer.innerHTML = SVGWallpapers[this.currentWallpaperKey] || '';
+                }
+            }
+
+            renderInterfaceState() {
+                const body = this.domElement.querySelector('.app-workspace-body');
+                body.innerHTML = '';
+
+                if (this.currentApp === null) {
+                    // Render default Homescreen Matrix holding V1 & V2 version architectures explicitly
+                    const home = document.createElement('div');
+                    home.className = 'homescreen-view';
+
+                    const appsConfig = [
+                        { id: 'dialer', label: 'Dialer', icon: '📟', version: 'V1' },
+                        { id: 'social', label: 'Social Hub', icon: '💬', version: 'V2' },
+                        { id: 'contacts', label: 'Contacts', icon: '📇', version: 'V2' },
+                        { id: 'settings', label: 'Settings', icon: '⚙️', version: 'V1' }
+                    ];
+
+                    appsConfig.forEach(app => {
+                        const iconWrap = document.createElement('div');
+                        iconWrap.className = 'app-launcher';
+                        iconWrap.innerHTML = `
+                            <div class="app-launcher-icon">${app.icon}</div>
+                            <div class="version-tag">${app.version}</div>
+                            <div class="app-launcher-label">${app.label}</div>
+                        `;
+                        iconWrap.addEventListener('click', () => {
+                            this.currentApp = app.id;
+                            this.renderInterfaceState();
+                        });
+                        home.appendChild(iconWrap);
+                    });
+
+                    body.appendChild(home);
+                } else if (this.currentApp === 'dialer') {
+                    this.renderDialerApp(body);
+                } else if (this.currentApp === 'social') {
+                    this.renderSocialAppView(body);
+                } else if (this.currentApp === 'contacts') {
+                    this.renderContactsAppView(body);
+                } else if (this.currentApp === 'settings') {
+                    this.renderSettingsAppView(body);
+                }
+            }
+
+            // Dialer App Implementation (V1 functionality)
+            renderDialerApp(body) {
+                const win = this.createWindowDOM('Dialer System V1');
+                const content = win.querySelector('.app-window-content');
+                
+                let currentDialString = "";
+                const output = document.createElement('div');
+                output.className = 'dialer-output';
+                output.innerText = currentDialString;
+                content.appendChild(output);
+
+                const keypad = document.createElement('div');
+                keypad.className = 'dialer-keypad';
+                ['1','2','3','4','5','6','7','8','9','*','0','#'].forEach(k => {
+                    const btn = document.createElement('button');
+                    btn.className = 'dial-btn';
+                    btn.innerText = k;
+                    btn.addEventListener('click', () => {
+                        currentDialString += k;
+                        output.innerText = currentDialString;
+                    });
+                    keypad.appendChild(btn);
+                });
+
+                const callRow = document.createElement('div');
+                callRow.style.padding = "0 20px";
+                const cBtn = document.createElement('button');
+                cBtn.style.width = "100%";
+                cBtn.style.backgroundColor = "#28a745";
+                cBtn.innerText = "START CONNECTION";
+                cBtn.addEventListener('click', () => {
+                    if(!currentDialString) return;
+                    NetworkHub.log(`[Device ${this.id}] Mock dialed carrier string out: ${currentDialString}`);
+                    output.innerText = "CONNECTING...";
+                    setTimeout(() => { output.innerText = "LINE BUSY"; }, 1500);
+                });
+                callRow.appendChild(cBtn);
+                content.appendChild(keypad);
+                content.appendChild(callRow);
+
+                body.appendChild(win);
+            }
+
+            // Enhanced Social Media Core App (V2 Platform incorporating Messaging and Snap Reels)
+            renderSocialAppView(body) {
+                const win = this.createWindowDOM('Social Hub V2');
+                const content = win.querySelector('.app-window-content');
+
+                if (!this.activeSocialUser) {
+                    // Auth view interface
+                    const authScreen = document.createElement('div');
+                    authScreen.className = 'soc-auth-screen';
+                    authScreen.innerHTML = `
+                        <div style="font-size:11px; text-align:center; color:var(--text-muted)">ENTER NETWORK IDENTITY TO LINK SYNC</div>
+                        <input type="text" class="soc-handle-input" placeholder="@handle" style="width:100%; text-align:center;">
+                        <button class="soc-login-btn" style="width:100%;">AUTHENTICATE</button>
+                    `;
+                    
+                    authScreen.querySelector('.soc-login-btn').addEventListener('click', () => {
+                        let handle = authScreen.querySelector('.soc-handle-input').value.trim();
+                        if (handle) {
+                            if (!handle.startsWith('@')) handle = '@' + handle;
+                            this.activeSocialUser = handle;
+                            this.renderSocialAppView(body);
+                        }
+                    });
+                    content.appendChild(authScreen);
+                } else {
+                    // Main layout views containing navigation tabs
+                    const mainScreen = document.createElement('div');
+                    mainScreen.className = 'soc-main-screen';
+                    mainScreen.innerHTML = `
+                        <div class="soc-nav-tabs">
+                            <div class="soc-tab ${this.activeSocialTab === 'feed' ? 'active' : ''}" data-tab="feed">Feed V1</div>
+                            <div class="soc-tab ${this.activeSocialTab === 'messages' ? 'active' : ''}" data-tab="messages">Direct V2</div>
+                            <div class="soc-tab ${this.activeSocialTab === 'reels' ? 'active' : ''}" data-tab="reels">Reels V2</div>
+                        </div>
+                        <div class="social-tab-viewport" style="flex:1; overflow:hidden; display:flex; flex-direction:column;"></div>
+                    `;
+
+                    mainScreen.querySelectorAll('.soc-tab').forEach(tab => {
+                        tab.addEventListener('click', () => {
+                            this.activeSocialTab = tab.getAttribute('data-tab');
+                            this.renderSocialAppView(body);
+                        });
+                    });
+
+                    const viewport = mainScreen.querySelector('.social-tab-viewport');
+                    this.renderActiveSocialTabContent(viewport);
+                    content.appendChild(mainScreen);
+                }
+
+                body.appendChild(win);
+            }
+
+            renderActiveSocialTabContent(viewport) {
+                if (this.activeSocialTab === 'feed') {
+                    viewport.innerHTML = `
+                        <div style="padding:10px; border-bottom:1px solid var(--border-color); display:flex; gap:6px;">
+                            <input type="text" class="feed-post-input" placeholder="Broadcast status updates..." style="flex:1; font-size:11px;">
+                            <button class="feed-post-btn">SEND</button>
+                        </div>
+                        <div class="soc-timeline"></div>
+                    `;
+                    viewport.querySelector('.feed-post-btn').addEventListener('click', () => {
+                        const input = viewport.querySelector('.feed-post-input');
+                        if (input.value.trim()) {
+                            NetworkHub.broadcastSocialPost(this.activeSocialUser, input.value.trim());
+                            input.value = '';
+                        }
+                    });
+                    this.refreshSocialFeed(viewport.querySelector('.soc-timeline'));
+
+                } else if (this.activeSocialTab === 'messages') {
+                    if (this.selectedChatHandle) {
+                        // Render explicit DM conversation window pane
+                        viewport.innerHTML = `
+                            <div style="background:var(--bg-tertiary); padding:8px 12px; font-size:11px; border-bottom:1px solid var(--border-color); display:flex; justify-content:space-between; align-items:center;">
+                                <span>Chat: <b>${this.selectedChatHandle}</b></span>
+                                <button class="back-to-channels-btn" style="font-size:9px; padding:2px 6px;">BACK</button>
+                            </div>
+                            <div class="chat-log"></div>
+                            <div style="padding:10px; border-top:1px solid var(--border-color); display:flex; gap:6px;">
+                                <input type="text" class="chat-msg-input" placeholder="Type direct link secure line..." style="flex:1; font-size:11px;">
+                                <button class="chat-msg-send-btn">TX</button>
+                            </div>
+                        `;
+                        viewport.querySelector('.back-to-channels-btn').addEventListener('click', () => {
+                            this.selectedChatHandle = null;
+                            this.renderActiveSocialTabContent(viewport);
+                        });
+                        viewport.querySelector('.chat-msg-send-btn').addEventListener('click', () => {
+                            const input = viewport.querySelector('.chat-msg-input');
+                            if(input.value.trim()) {
+                                NetworkHub.routeDirectMessage(this.activeSocialUser, this.selectedChatHandle, input.value.trim());
+                                input.value = '';
+                            }
+                        });
+                        this.refreshChatLogs(viewport.querySelector('.chat-log'));
+                    } else {
+                        // Render channel directories lists available across node links
+                        viewport.innerHTML = `
+                            <div style="padding:10px; font-size:11px; color:var(--text-muted); border-bottom:1px solid var(--border-color)">Select Destination Channel User Node:</div>
+                            <div class="dm-channels-list"></div>
+                        `;
+                        const channelContainer = viewport.querySelector('.dm-channels-list');
+                        
+                        // Dynamically discover alternative routing handles linked on network hubs
+                        const foundHandles = new Set();
+                        Object.values(NetworkHub.devices).forEach(dev => {
+                            if(dev.activeSocialUser && dev.activeSocialUser !== this.activeSocialUser) {
+                                foundHandles.add(dev.activeSocialUser);
+                            }
+                        });
+                        // Supplement default static simulation profiles if solitary configuration occurs
+                        if(foundHandles.size === 0) {
+                            foundHandles.add("@matrix_runner");
+                            foundHandles.add("@sys_admin");
+                        }
+
+                        foundHandles.forEach(h => {
+                            const row = document.createElement('div');
+                            row.className = 'channel-row';
+                            row.innerHTML = `<span>${h}</span><span style="color:#00ff66;">● Connect</span>`;
+                            row.addEventListener('click', () => {
+                                this.selectedChatHandle = h;
+                                this.renderActiveSocialTabContent(viewport);
+                            });
+                            channelContainer.appendChild(row);
+                        });
+                    }
+                } else if (this.activeSocialTab === 'reels') {
+                    // Scrollable Short-Form Content Feed Framework configuration (V2)
+                    viewport.innerHTML = `<div class="reels-feed-container"></div>`;
+                    const reelsContainer = viewport.querySelector('.reels-feed-container');
+                    
+                    MockShortFormReels.forEach(reel => {
+                        const slide = document.createElement('div');
+                        slide.className = 'reel-slide';
+                        
+                        // SVG Matrix animations mimicking media playback vectors inside cards dynamically
+                        slide.innerHTML = `
+                            <div class="reel-media-mock">
+                                <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                        <linearGradient id="reelGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" stop-color="#11052C"/>
+                                            <stop offset="100%" stop-color="#0D0D0D"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <rect width="100%" height="100%" fill="url(#reelGrad)"/>
+                                    <circle cx="150" cy="180" r="40" fill="none" stroke="#ff00aa" stroke-width="1" opacity="0.4">
+                                        <animate attributeName="r" values="30;55;30" dur="3s" repeatCount="indefinite"/>
+                                    </circle>
+                                    <path d="M 30 50 L 270 280" stroke="rgba(0, 255, 255, 0.15)" stroke-width="2"/>
+                                </svg>
+                            </div>
+                            <div class="reel-overlay-details">
+                                <div class="reel-author">${reel.author}</div>
+                                <div class="reel-description">${reel.description}</div>
+                            </div>
+                        `;
+                        reelsContainer.appendChild(slide);
+                    });
+                }
+            }
+
+            refreshSocialFeed(timelineElement = null) {
+                const timeline = timelineElement || this.domElement.querySelector('.soc-timeline');
+                if(!timeline) return;
+                timeline.innerHTML = '';
+                
+                NetworkHub.socialPosts.forEach(post => {
+                    const block = document.createElement('div');
+                    block.className = 'soc-post';
+                    block.innerHTML = `<div class="soc-handle">${post.sender}</div><div style="word-break:break-all; font-size:12px;">${post.content}</div>`;
+                    timeline.appendChild(block);
+                });
+            }
+
+            refreshChatLogs(logElement = null) {
+                const logContainer = logElement || this.domElement.querySelector('.chat-log');
+                if(!logContainer) return;
+                logContainer.innerHTML = '';
+
+                const conversation = NetworkHub.networkMessages.filter(m => 
+                    (m.from === this.activeSocialUser && m.to === this.selectedChatHandle) ||
+                    (m.from === this.selectedChatHandle && m.to === this.activeSocialUser)
+                );
+
+                if(conversation.length === 0) {
+                    logContainer.innerHTML = `<div style="text-align:center; color:var(--text-muted); font-size:11px; margin-top:20px;">No transaction link traces found. Secure sequence clear.</div>`;
+                    return;
+                }
+
+                conversation.forEach(msg => {
+                    const bubble = document.createElement('div');
+                    const isMe = msg.from === this.activeSocialUser;
+                    bubble.className = `chat-bubble ${isMe ? 'sent' : 'received'}`;
+                    bubble.innerHTML = `<div>${msg.body}</div><div style="font-size:8px; text-align:right; margin-top:3px; opacity:0.6;">${msg.time}</div>`;
+                    logContainer.appendChild(bubble);
+                });
+                logContainer.scrollTop = logContainer.scrollHeight;
+            }
+
+            // Custom local Contacts App (V2 system with automatic name monogram configuration)
+            renderContactsAppView(body) {
+                const win = this.createWindowDOM('Contacts V2');
+                const content = win.querySelector('.app-window-content');
+
+                const creator = document.createElement('div');
+                creator.className = 'contacts-creator-box';
+                creator.innerHTML = `
+                    <input type="text" class="contact-in-name" placeholder="Full Name Name Mapping..." style="font-size:11px; padding:4px;">
+                    <input type="text" class="contact-in-num" placeholder="Identifier Line Index (eg: 555-X)..." style="font-size:11px; padding:4px;">
+                    <button class="contact-save-btn" style="font-size:11px; font-weight:bold; padding:4px;">COMMIT TO MEMORY CORE</button>
+                `;
+
+                creator.querySelector('.contact-save-btn').addEventListener('click', () => {
+                    const nameIn = creator.querySelector('.contact-in-name').value.trim();
+                    const numIn = creator.querySelector('.contact-in-num').value.trim();
+                    if(nameIn && numIn) {
+                        this.contacts.push({ name: nameIn, number: numIn });
+                        NetworkHub.log(`[Device ${this.id}] Added custom contact profile node: "${nameIn}"`);
+                        this.renderContactsAppView(body);
+                    }
+                });
+
+                const listContainer = document.createElement('div');
+                listContainer.className = 'contacts-list-container';
+
+                this.contacts.forEach(contact => {
+                    // Extract uppercase character fragments for individual custom monograms
+                    const tokens = contact.name.split(' ');
+                    let monogram = tokens[0] ? tokens[0].charAt(0) : '?';
+                    if(tokens.length > 1 && tokens[tokens.length - 1]) {
+                        monogram += tokens[tokens.length - 1].charAt(0);
+                    }
+                    monogram = monogram.toUpperCase();
+
+                    const card = document.createElement('div');
+                    card.className = 'contact-card';
+                    card.innerHTML = `
+                        <div class="contact-monogram-avatar">${monogram}</div>
+                        <div class="contact-meta">
+                            <div class="contact-name-display">${contact.name}</div>
+                            <div class="contact-num-display">${contact.number}</div>
+                        </div>
+                        <div class="contact-action-triggers">
+                            <button class="call-trigger-btn" style="padding:3px 6px; font-size:11px;">📟</button>
+                            <button class="msg-trigger-btn" style="padding:3px 6px; font-size:11px;">💬</button>
+                        </div>
+                    `;
+
+                    // Contextual calling hooks
+                    card.querySelector('.call-trigger-btn').addEventListener('click', () => {
+                        this.currentApp = 'dialer';
+                        this.renderInterfaceState();
+                        NetworkHub.log(`[Device ${this.id}] Initiated direct standard out dial bridge to ${contact.name}`);
+                    });
+
+                    // Contextual messaging hooks routing automatically via Social Hub credentials
+                    card.querySelector('.msg-trigger-btn').addEventListener('click', () => {
+                        if(!this.activeSocialUser) {
+                            // Assign standard synthetic handle matching contact expectations if not created yet
+                            this.activeSocialUser = "@device_" + this.id + "_user";
+                        }
+                        this.currentApp = 'social';
+                        this.activeSocialTab = 'messages';
+                        // Convert display strings into network identifiers
+                        this.selectedChatHandle = "@" + contact.name.toLowerCase().replace(/\s+/g, '_');
+                        this.renderInterfaceState();
+                    });
+
+                    listContainer.appendChild(card);
+                });
+
+                content.appendChild(creator);
+                content.appendChild(listContainer);
+                body.appendChild(win);
+            }
+
+            // Wallpaper Store / Settings panel custom engine (V1 functionality)
+            renderSettingsAppView(body) {
+                const win = this.createWindowDOM('Settings V1');
+                const content = win.querySelector('.app-window-content');
+
+                content.innerHTML = `
+                    <div style="padding:12px 14px; font-size:11px; color:var(--text-muted); font-weight:bold; text-transform:uppercase;">Select SVG Device Matrix Wallpaper</div>
+                    <div class="wallpaper-picker-grid">
+                        <div class="wallpaper-option-card" data-wall="matrix">${SVGWallpapers.matrix}</div>
+                        <div class="wallpaper-option-card" data-wall="cyber">${SVGWallpapers.cyber}</div>
+                        <div class="wallpaper-option-card" data-wall="mono">${SVGWallpapers.mono}</div>
+                    </div>
+                    <div style="padding:15px; border-top:1px solid var(--border-color); font-size:11px; color:var(--text-muted)">
+                        <div>Chassis Profile: ${this.colorName}</div>
+                        <div>Form Design Factor: Model ${this.model} Layout Array</div>
+                    </div>
+                `;
+
+                content.querySelectorAll('.wallpaper-option-card').forEach(card => {
+                    card.addEventListener('click', () => {
+                        this.currentWallpaperKey = card.getAttribute('data-wall');
+                        this.updateWallpaperSVG();
+                        NetworkHub.log(`[Device ${this.id}] Updated screen core wallpaper layout to target: ${this.currentWallpaperKey}`);
+                    });
+                });
+
+                body.appendChild(win);
+            }
+
+            createWindowDOM(titleText) {
+                const win = document.createElement('div');
+                win.className = 'app-window';
+                win.innerHTML = `
+                    <div class="app-window-header">
+                        <span>${titleText}</span>
+                        <span class="close-app-trigger" style="cursor:pointer; padding:0 4px; color:#ff3b30;">✕</span>
+                    </div>
+                    <div class="app-window-content"></div>
+                `;
+                win.querySelector('.close-app-trigger').addEventListener('click', () => {
+                    this.currentApp = null;
+                    this.renderInterfaceState();
+                });
+                return win;
+            }
+        }
+
+        // Workspace Provisioning Management Controller
+        const Workspace = {
+            deviceSequenceCounter: 0,
+
+            init() {
+                this.bindUIControls();
+                
+                // Initialize default selector configurations matching Model 12 profiles
+                this.updateProvisionColorDropdown("12");
+
+                // Spawn baseline instances automatically for immediate interaction out of box
+                this.spawnDeviceInstance("12", "Blue", "#274257");
+                this.spawnDeviceInstance("13", "Midnight", "#171e26");
+            },
+
+            bindUIControls() {
+                const modelSelect = document.getElementById('provision-model');
+                if(modelSelect) {
+                    modelSelect.addEventListener('change', (e) => {
+                        this.updateProvisionColorDropdown(e.target.value);
+                    });
+                }
+
+                const spawnBtn = document.getElementById('btn-spawn-device');
+                if(spawnBtn) {
+                    spawnBtn.addEventListener('click', () => {
+                        const targetModel = document.getElementById('provision-model').value;
+                        const colorSelect = document.getElementById('provision-color');
+                        const selectedOption = colorSelect.options[colorSelect.selectedIndex];
+                        
+                        const colorName = selectedOption.text;
+                        const colorCode = selectedOption.value;
+
+                        this.spawnDeviceInstance(targetModel, colorName, colorCode);
+                    });
+                }
+            },
+
+            updateProvisionColorDropdown(modelKey) {
+                const colorSelect = document.getElementById('provision-color');
+                if(!colorSelect) return;
+                colorSelect.innerHTML = '';
+
+                const arrangements = HardwareColorMatrix[modelKey] || [];
+                arrangements.forEach(col => {
+                    const opt = document.createElement('option');
+                    opt.value = col.code;
+                    opt.innerText = col.name;
+                    colorSelect.appendChild(opt);
+                });
+            },
+
+            spawnDeviceInstance(model, colorName, colorCode) {
+                this.deviceSequenceCounter++;
+                const newDevice = new SimulatedDevice(this.deviceSequenceCounter, model, colorName, colorCode);
+                NetworkHub.devices[newDevice.id] = newDevice;
+                NetworkHub.log(`Provisioned Model ${model} device assembly index assigned: [ID: ${newDevice.id} | ${colorName}]`);
+            }
+        };
+
+        // Initialize Simulator Workspace components on execution load
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+        };
+    </script>
+</body>
+</html>

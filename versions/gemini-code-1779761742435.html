@@ -1,0 +1,1993 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Device Workspace Simulation</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #121212;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #e0e0e0;
+            --text-muted: #777777;
+            --accent: #555555;
+            --accent-active: #aaaaaa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Diagnostics Control Panel */
+        #control-panel {
+            height: 180px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            z-index: 10;
+            padding: 10px;
+            gap: 15px;
+        }
+
+        .panel-section {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+
+        .panel-section h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 3px;
+        }
+
+        #sys-controls { width: 260px; }
+        #sim-factory { width: 300px; }
+        #network-logger { flex-grow: 1; }
+
+        .log-stream {
+            font-size: 11px;
+            color: #00ff00;
+            overflow-y: auto;
+            flex-grow: 1;
+            background: #050505;
+            padding: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+        }
+
+        .log-entry { margin-bottom: 3px; white-space: nowrap; }
+
+        button, select, input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 5px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        button:hover {
+            background: var(--border-color);
+            border-color: var(--text-muted);
+        }
+
+        input { cursor: text; }
+
+        /* Workspace Grid (Infinite Pan Canvas) */
+        #workspace-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #workspace-container:active { cursor: grabbing; }
+
+        #workspace-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5000px;
+            height: 5000px;
+            transform-origin: 0 0;
+        }
+
+        /* 3D Phone Chassis Styles */
+        .phone-wrapper {
+            position: absolute;
+            perspective: 1000px;
+            width: 260px;
+            height: 510px;
+            z-index: 5;
+        }
+
+        /* Model Scaling Layouts */
+        .phone-wrapper.m-5 { width: 230px; height: 460px; }
+        .phone-wrapper.m-5c { width: 230px; height: 460px; }
+        .phone-wrapper.m-6 { width: 245px; height: 495px; }
+        .phone-wrapper.m-7 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8p { width: 265px; height: 520px; }
+        .phone-wrapper.m-x { width: 265px; height: 535px; }
+        .phone-wrapper.m-11 { width: 270px; height: 540px; }
+        .phone-wrapper.m-12 { width: 270px; height: 540px; }
+        .phone-wrapper.m-13 { width: 270px; height: 540px; }
+        
+        /* Aero OS Phone Chassis Sizing */
+        .phone-wrapper.m-p1 { width: 235px; height: 475px; }
+        .phone-wrapper.m-p3 { width: 245px; height: 495px; }
+        .phone-wrapper.m-p6 { width: 260px; height: 530px; }
+        .phone-wrapper.m-p8 { width: 260px; height: 530px; }
+        .phone-wrapper.m-pFold1 { width: 290px; height: 510px; }
+        .phone-wrapper.m-pFold2 { width: 285px; height: 525px; }
+        .phone-wrapper.m-p10 { width: 265px; height: 540px; }
+        .phone-wrapper.m-p10XL { width: 275px; height: 555px; }
+
+        .phone-card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+
+        .phone-wrapper.flipped .phone-card {
+            transform: rotateY(180deg);
+        }
+
+        .phone-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 28px;
+            border: 4px solid #333;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Front Face Architecture */
+        .phone-front {
+            background: #111111;
+            color: var(--text-main);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+
+        /* Cellular Antenna Band Engineering Lines */
+        .phone-back .antenna-line.horiz-top { top: 55px; left: 0; width: 100%; height: 2px; background: rgba(0,0,0,0.3); }
+        .phone-back .antenna-line.horiz-bottom { bottom: 55px; left: 0; width: 100%; height: 2px; background: rgba(0,0,0,0.3); }
+
+        /* Chassis Framework Variant Profiles */
+        .m-5 .phone-front { border-radius: 24px; }
+        .m-5c .phone-front { border-radius: 26px; }
+        .m-6 .phone-front { border-radius: 32px; }
+        
+        /* Edge to edge dynamic screens */
+        .m-x .phone-front, .m-11 .phone-front, .m-12 .phone-front, .m-13 .phone-front,
+        .m-p1 .phone-front, .m-p3 .phone-front, .m-p6 .phone-front, .m-p8 .phone-front,
+        .m-pFold1 .phone-front, .m-pFold2 .phone-front, .m-p10 .phone-front, .m-p10XL .phone-front { 
+            border-radius: 40px; padding: 4px; 
+        }
+        
+        .m-x .top-bezel, .m-11 .top-bezel, .m-12 .top-bezel, .m-13 .top-bezel,
+        .m-p1 .top-bezel, .m-p3 .top-bezel, .m-p6 .top-bezel, .m-p8 .top-bezel,
+        .m-pFold1 .top-bezel, .m-pFold2 .top-bezel, .m-p10 .top-bezel, .m-p10XL .top-bezel { 
+            height: 32px; background: transparent !important; z-index: 15; 
+        }
+        
+        .notch {
+            width: 110px; height: 22px; background: #000 !important; border-radius: 0 0 12px 12px;
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            display: flex; justify-content: center; align-items: center; gap: 8px;
+        }
+        /* Custom Aero camera hole pin punches */
+        .aero-punch {
+            width: 10px; height: 10px; background: #000; border-radius: 50%;
+            position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+        }
+
+        .speaker-grille { width: 35px; height: 3px; background: #222; }
+        .front-cam { position: static; width: 6px; height: 6px; background: #111133; }
+        
+        .m-x .bottom-bezel, .m-11 .bottom-bezel, .m-12 .bottom-bezel, .m-13 .bottom-bezel,
+        .m-p1 .bottom-bezel, .m-p3 .bottom-bezel, .m-p6 .bottom-bezel, .m-p8 .bottom-bezel,
+        .m-pFold1 .bottom-bezel, .m-pFold2 .bottom-bezel, .m-p10 .bottom-bezel, .m-p10XL .bottom-bezel { 
+            display: none !important; 
+        }
+        
+        .m-x .screen, .m-11 .screen, .m-12 .screen, .m-13 .screen,
+        .m-p1 .screen, .m-p3 .screen, .m-p6 .screen, .m-p8 .screen,
+        .m-pFold1 .screen, .m-pFold2 .screen, .m-p10 .screen, .m-p10XL .screen { 
+            border-radius: 34px; border: none; 
+        }
+
+        /* System Bezels */
+        .top-bezel {
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .bottom-bezel {
+            height: 45px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .home-button {
+            width: 34px;
+            height: 34px;
+            border: 1px solid #333;
+            border-radius: 50%;
+            cursor: pointer;
+            background: radial-gradient(circle, #151515 0%, #0a0a0a 100%);
+        }
+
+        /* Screen Architecture */
+        .screen {
+            flex-grow: 1;
+            background: #000;
+            border: 1px solid #222;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .status-bar {
+            height: 20px;
+            background: rgba(8, 8, 8, 0.75);
+            font-size: 9px;
+            padding: 0 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(17, 17, 17, 0.3);
+            color: var(--text-muted);
+            z-index: 12;
+        }
+        .m-x .status-bar, .m-11 .status-bar, .m-12 .status-bar, .m-13 .status-bar,
+        .m-p1 .status-bar, .m-p3 .status-bar, .m-p6 .status-bar, .m-p8 .status-bar,
+        .m-pFold1 .status-bar, .m-pFold2 .status-bar, .m-p10 .status-bar, .m-p10XL .status-bar { 
+            height: 26px; padding-top: 6px; background: rgba(0, 0, 0, 0.75); 
+        }
+
+        .status-left, .status-right { display: flex; gap: 4px; align-items: center; }
+
+        .app-space {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* System App Containers */
+        .app-view {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            display: none;
+            flex-direction: column;
+            z-index: 5;
+            overflow: hidden;
+        }
+        .app-view.active { display: flex; }
+
+        .app-header {
+            height: 32px;
+            background: #0d0d0d;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .app-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+        }
+
+        /* Home Indicator Bar for Edge-to-Edge Layouts */
+        .home-bar {
+            display: none;
+            width: 110px; height: 4px; background: #888; border-radius: 2px;
+            position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+            z-index: 100; cursor: pointer;
+        }
+        .m-x .home-bar, .m-11 .home-bar, .m-12 .home-bar, .m-13 .home-bar,
+        .m-p1 .home-bar, .m-p3 .home-bar, .m-p6 .home-bar, .m-p8 .home-bar,
+        .m-pFold1 .home-bar, .m-pFold2 .home-bar, .m-p10 .home-bar, .m-p10XL .home-bar { 
+            display: block; 
+        }
+
+        /* OS Launcher UI Variants */
+        .launcher-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .app-icon {
+            background: rgba(13, 13, 13, 0.75);
+            border: 1px solid var(--border-color);
+            height: 58px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 10px;
+            gap: 2px;
+            transition: all 0.2s ease;
+        }
+        .app-icon:hover { background: rgba(21, 21, 21, 0.9); }
+        .app-icon span { font-size: 16px; }
+
+        /* Aero OS Circular UI Styles Override */
+        .aero-system .app-icon {
+            border-radius: 50%;
+            height: 70px;
+            width: 70px;
+            margin: auto;
+            background: rgba(30, 40, 30, 0.85);
+            border: 1px solid #4caf50;
+        }
+        .aero-system .launcher-grid {
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 12px;
+        }
+
+        /* Phone App Elements */
+        .dialer-output {
+            background: #050505;
+            border: 1px solid #1a1a1a;
+            padding: 4px;
+            text-align: right;
+            font-size: 14px;
+            margin-bottom: 6px;
+            min-height: 24px;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+        .dialer-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .dial-btn {
+            background: #0c0c0c;
+            border: 1px solid #1e1e1e;
+            padding: 6px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .dial-btn:hover { background: #1a1a1a; }
+        .call-actions { display: flex; gap: 5px; }
+
+        .inc-call-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+        .inc-call-overlay.active { display: flex; }
+
+        /* Messaging Subsystem */
+        .msg-threads { display: flex; flex-direction: column; gap: 4px; }
+        .thread-row {
+            padding: 6px; background: #090909; border: 1px solid #151515; cursor: pointer;
+        }
+        .chat-stream { flex-grow: 1; overflow-y: auto; background: #030303; border: 1px solid #111; padding: 4px; margin-bottom: 4px; display: flex; flex-direction: column; background-size: cover; background-position: center; }
+        .chat-bubble { max-width: 85%; padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; word-break: break-all; font-size: 11px; }
+        .chat-bubble.sent { background: #222; align-self: flex-end; color: #fff; }
+        
+        /* Directives for bubble handling color modes */
+        .chat-bubble.rcvd.regular-blue { background: #007aff; align-self: flex-start; color: white; }
+        .chat-bubble.rcvd.aero-lime { background: #4cd964; align-self: flex-start; color: black; font-weight: bold; }
+
+        /* Social Network UI */
+        .soc-acc-bar {
+            display: flex; gap: 3px; background: #0a0a0a; padding: 4px; border-bottom: 1px solid #1a1a1a; overflow-x: auto; flex-shrink: 0;
+        }
+        .mini-avatar {
+            font-size: 9px; padding: 2px 4px; background: #151515; border: 1px solid #333; cursor: pointer; white-space: nowrap;
+        }
+        .mini-avatar.active { background: #333; color: #fff; }
+        .soc-post {
+            background: #0a0a0a; border: 1px solid #1a1a1a; padding: 6px; margin-bottom: 6px; border-radius: 2px;
+        }
+        .soc-handle { color: var(--text-muted); font-size: 10px; margin-bottom: 2px; }
+
+        /* NetSpace Social Messaging / Shorts additions */
+        .soc-tab-nav {
+            display: flex; background: #111; border-bottom: 1px solid #222; flex-shrink: 0;
+        }
+        .soc-tab-btn {
+            flex: 1; text-align: center; font-size: 9px; padding: 6px; cursor: pointer; color: #888;
+        }
+        .soc-tab-btn.active { color: #fff; background: #1a1a1a; font-weight: bold; }
+        .soc-dm-window { display: none; flex-direction: column; flex-grow: 1; }
+        .soc-shorts-window { display: none; flex-direction: column; flex-grow: 1; overflow-y: scroll; snap-type: y mandatory; }
+        
+        .short-video-container {
+            snap-align: start; min-height: 280px; height: 280px; position: relative; border-bottom: 2px solid #222; background: #000; display: flex; flex-direction: column; justify-content: space-between; padding: 8px;
+        }
+        .short-graphic-frame { flex-grow: 1; display: flex; align-items: center; justify-content: center; text-align: center; font-size: 14px; font-weight: bold; color: #00ff00; }
+        .short-meta { font-size: 9px; color: #aaa; background: rgba(0,0,0,0.6); padding: 4px; }
+
+        /* Physical Back Face Architecture */
+        .phone-back {
+            transform: rotateY(180deg);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 28px;
+            position: relative;
+        }
+        
+        /* Shell Finishes / Colors Rules */
+        .phone-card[data-color="matte-black"] .phone-back { background: #141414; color: #888; border-color: #222; }
+        .phone-card[data-color="industrial-gray"] .phone-back { background: #2e2e2e; color: #ccc; border-color: #444; }
+        .phone-card[data-color="monochrome-white"] .phone-back { background: #dcdcdc; color: #222; border-color: #aaaaaa; }
+        .phone-card[data-color="rose-gold"] .phone-back { background: #fad6d6; color: #444; border-color: #e0b2b2; }
+        .phone-card[data-color="rose"] .phone-back { background: #ffb6c1; color: #444; border-color: #e8a2ad; }
+        
+        /* Model 5c Polycarbonate */
+        .phone-card[data-color="neon-blue"] .phone-back { background: #00a3e0; color: #fff; border-color: #0082b3; }
+        .phone-card[data-color="lime-green"] .phone-back { background: #4cd964; color: #000; border-color: #3cb252; }
+        .phone-card[data-color="coral-pink"] .phone-back { background: #ff4f6a; color: #fff; border-color: #e03b54; }
+        .phone-card[data-color="canary-yellow"] .phone-back { background: #ffcc00; color: #000; border-color: #e6b800; }
+
+        /* Model 6 / 11 Architectural Paint Specs */
+        .phone-card[data-color="space-gray"] .phone-back { background: #555559; color: #eee; border-color: #3a3a3c; }
+        .phone-card[data-color="gold"] .phone-back { background: #f9e4b7; color: #333; border-color: #e5cb93; }
+        .phone-card[data-color="silver"] .phone-back { background: #e3e4e6; color: #111; border-color: #b5b6b8; }
+        .phone-card[data-color="purple"] .phone-back { background: #d1cddb; color: #222; border-color: #b7b2c5; }
+        .phone-card[data-color="mint-green"] .phone-back { background: #addece; color: #111; border-color: #90c2b2; }
+        .phone-card[data-color="product-red"] .phone-back { background: #d92632; color: #fff; border-color: #b51620; }
+
+        /* Model 12 / 13 Colors */
+        .phone-card[data-color="pacific-blue"] .phone-back { background: #2b4353; color: #fff; border-color: #1e303c; }
+        .phone-card[data-color="slate-graphite"] .phone-back { background: #38393d; color: #eee; border-color: #252629; }
+        .phone-card[data-color="sierra-blue"] .phone-back { background: #a7c1d6; color: #222; border-color: #7b94a8; }
+        .phone-card[data-color="alpine-green"] .phone-back { background: #4f5d4e; color: #fff; border-color: #353f34; }
+        .phone-card[data-color="midnight"] .phone-back { background: #1a232e; color: #eee; border-color: #10161e; }
+        .phone-card[data-color="starlight"] .phone-back { background: #faf6f0; color: #222; border-color: #dfdcd6; }
+
+        /* Aero-Line Real Life Specific Colorways */
+        .phone-card[data-color="quite-black"] .phone-back { background: #2c2c2e; color: #eee; border-color: #1c1c1e; }
+        .phone-card[data-color="very-silver"] .phone-back { background: #e5e5ea; color: #111; border-color: #c7c7cc; }
+        .phone-card[data-color="not-pink"] .phone-back { background: #f7d6d0; color: #333; border-color: #e0b6b0; }
+        .phone-card[data-color="clearly-white"] .phone-back { background: #fcfcfc; color: #000; border-color: #d1d1d6; }
+        .phone-card[data-color="stormy-black"] .phone-back { background: #3a3a3c; color: #fff; border-color: #222; }
+        .phone-card[data-color="sorta-seafoam"] .phone-back { background: #bdf0e2; color: #222; border-color: #9cd1c3; }
+        .phone-card[data-color="obsidian"] .phone-back { background: #1c1a17; color: #aaa; border-color: #0c0b0a; }
+        .phone-card[data-color="porcelain"] .phone-back { background: #f3f0eb; color: #222; border-color: #dbd7cf; }
+        .phone-card[data-color="bay-blue"] .phone-back { background: #8ab4f8; color: #fff; border-color: #5a84c8; }
+        .phone-card[data-color="aloe"] .phone-back { background: #9bf1c4; color: #222; border-color: #78ce9f; }
+        .phone-card[data-color="hazel"] .phone-back { background: #5a6157; color: #fff; border-color: #434940; }
+
+        /* Front Bezels Painting Rules */
+        .phone-card[data-front-theme="black"] .phone-front { background: #0c0c0c; border-color: inherit; }
+        .phone-card[data-front-theme="black"] .top-bezel, .phone-card[data-front-theme="black"] .bottom-bezel { background: #0c0c0c; color: #fff; }
+        .phone-card[data-front-theme="white"] .phone-front { background: #eaeaea; border-color: inherit; color: #222; }
+        .phone-card[data-front-theme="white"] .top-bezel, .phone-card[data-front-theme="white"] .bottom-bezel { background: #eaeaea; color: #222; }
+        .phone-card[data-front-theme="white"] .status-bar { background: rgba(220, 220, 220, 0.85); color: #333; }
+
+        /* Hardware Interactive Lateral Side Tray */
+        .hardware-sim-tray-bracket {
+            position: absolute;
+            right: -12px;
+            top: 160px;
+            width: 12px;
+            height: 48px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            z-index: 40;
+            padding: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: width 0.2s ease;
+        }
+        .hardware-sim-tray-bracket.expanded {
+            width: 175px;
+            right: -175px;
+            height: auto;
+            min-height: 55px;
+            flex-direction: column;
+            background: #111;
+            border: 2px solid #ffcc00;
+            border-radius: 4px;
+            padding: 6px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+        }
+        .side-tray-label {
+            font-size: 8px;
+            color: #ffcc00;
+            font-weight: bold;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            display: none;
+        }
+        .hardware-sim-tray-bracket.expanded .side-tray-label { display: block; }
+        .side-sim-select {
+            display: none;
+            width: 100%;
+            font-size: 10px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 2px;
+            margin-bottom: 4px;
+        }
+        .hardware-sim-tray-bracket.expanded .side-sim-select { display: block; }
+        .side-tray-icon { font-size: 10px; color: #aaa; }
+        .hardware-sim-tray-bracket.expanded .side-tray-icon { display: none; }
+
+        /* Repositioned Camera Housings */
+        .cam-housing {
+            background: #0a0a0a;
+            border: 2px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 15px;
+            left: 15px;
+        }
+        .m-5 .cam-housing, .m-5c .cam-housing, .m-6 .cam-housing, .m-7 .cam-housing, .m-8 .cam-housing,
+        .m-p1 .cam-housing, .m-p3 .cam-housing {
+            width: 26px; height: 26px; border-radius: 50%;
+        }
+        .m-8p .cam-housing {
+            width: 44px; height: 24px; border-radius: 12px; gap: 4px; padding: 0 4px;
+        }
+        .m-x .cam-housing, .m-12 .cam-housing, .m-13 .cam-housing {
+            width: 24px; height: 44px; border-radius: 12px; gap: 4px; padding: 4px 0; flex-direction: column;
+        }
+        .m-11 .cam-housing {
+            width: 48px; height: 48px; border-radius: 14px; gap: 4px; padding: 4px; display: grid; grid-template-columns: repeat(2, 1fr); background: rgba(20,20,20,0.8);
+        }
+        /* Aero horizontal camera vizor architecture */
+        .m-p6 .cam-housing, .m-p8 .cam-housing, .m-pFold1 .cam-housing, .m-pFold2 .cam-housing, .m-p10 .cam-housing, .m-p10XL .cam-housing {
+            width: 80%; height: 20px; left: 10%; top: 25px; border-radius: 4px; gap: 10px; padding: 0 10px;
+        }
+
+        .lens { width: 10px; height: 10px; background: #05101a; border-radius: 50%; border: 1px solid #111; margin: auto; }
+
+        .hardware-info { text-align: center; margin-top: 60px; font-size: 9px; text-transform: uppercase; line-height: 14px; color: inherit; opacity: 0.7; width: 100%; }
+
+        /* Window Overlay Utilitarian Elements */
+        .utility-row { display: flex; gap: 4px; margin-bottom: 4px; flex-shrink: 0; }
+        .utility-row input { flex-grow: 1; }
+        
+        /* Floating HUD metrics on devices */
+        .spatial-hud {
+            position: absolute; bottom: -35px; left: 0; width: 100%;
+            text-align: center; font-size: 10px; color: var(--text-muted);
+            pointer-events: none; line-height: 14px;
+        }
+
+        .flip-tab {
+            position: absolute; top: 10px; right: 10px; z-index: 100;
+            background: rgba(0,0,0,0.8); border: 1px solid #444; padding: 2px 6px;
+            font-size: 8px; border-radius: 3px; color: #aaa; cursor: pointer;
+        }
+        .flip-tab:hover { color: #fff; background: #000; }
+
+        /* Router Elements Matrix Profiles */
+        .router-wrapper {
+            position: absolute;
+            width: 120px;
+            height: 90px;
+            background: #181818;
+            border: 2px solid #333;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 10px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.8);
+            cursor: move;
+            z-index: 4;
+        }
+        .router-antenna {
+            position: absolute; top: -15px; width: 3px; height: 15px; background: #444;
+        }
+        .router-antenna.a1 { left: 20px; }
+        .router-antenna.a2 { right: 20px; }
+        .router-led {
+            width: 5px; height: 5px; background: #00ff00; border-radius: 50%; display: inline-block; margin-right: 4px;
+        }
+
+        /* Drawing Box Marquee Infrastructure */
+        #selection-marquee {
+            position: absolute;
+            border: 1px dashed #ffcc00;
+            background: rgba(255, 204, 0, 0.15);
+            pointer-events: none;
+            display: none;
+            z-index: 1000;
+        }
+
+        .selected-group-node {
+            box-shadow: 0 0 0 2px #ffcc00 !important;
+        }
+
+        /* Monogram Contact circle layout styles */
+        .contact-entry {
+            display: flex; align-items: center; gap: 8px; padding: 6px; background: #111; margin-bottom: 4px; border: 1px solid #222; border-radius: 4px;
+        }
+        .contact-monogram {
+            width: 24px; height: 24px; border-radius: 50%; background: #444; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold; text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="control-panel">
+        <div class="panel-section" id="sys-controls">
+            <h3>System Controls</h3>
+            <div style="display: flex; flex-direction: column; gap: 4px; overflow-y:auto; flex-grow:1;">
+                <div>
+                    <label style="font-size:9px; color:var(--text-muted)">CHASSIS TYPE:</label>
+                    <select id="spawn-model" style="width:100%; margin-top:1px;" onchange="UiEngine.handleModelChange()">
+                        <option value="m-5">Model 5 (Legacy Metal)</option>
+                        <option value="m-5c">Model 5c (Polycarbonate)</option>
+                        <option value="m-6">Model 6 (Slim Rounded Curve)</option>
+                        <option value="m-7">Model 7 (Solid Core Pro)</option>
+                        <option value="m-8">Model 8 (Glass-backed Standard)</option>
+                        <option value="m-8p">Model 8 Plus (Dual Wide Frame)</option>
+                        <option value="m-x">Model X (Dynamic Top Notch)</option>
+                        <option value="m-11">Model 11 (Square Triple Module)</option>
+                        <option value="m-12">Model 12 (Flat Bezel Aluminum)</option>
+                        <option value="m-13">Model 13 (Diagonal Dual Chamber)</option>
+                        <option value="m-p1">Aero p1 (First-Gen Compact)</option>
+                        <option value="m-p3">Aero p3 (Two-Tone Glass)</option>
+                        <option value="m-p6">Aero p6 (Horizontal Vizor Line)</option>
+                        <option value="m-p8">Aero p8 (Polished Actuator Case)</option>
+                        <option value="m-pFold1">Aero pFold1 (Wide-Aspect Flexible)</option>
+                        <option value="m-pFold2">Aero pFold2 (Ultra-Thin Spine Matrix)</option>
+                        <option value="m-p10">Aero p10 (Next-Gen Under-Display)</option>
+                        <option value="m-p10XL">Aero p10XL (Expanded Workspace Panel)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:9px; color:var(--text-muted)">HARDWARE FINISH FINALLER:</label>
+                    <select id="spawn-color" style="width:100%; margin-top:1px;">
+                        <option value="matte-black">Matte Black</option>
+                        <option value="industrial-gray">Industrial Gray</option>
+                        <option value="monochrome-white">Monochrome White</option>
+                        <option value="rose-gold">Rose Gold</option>
+                        <option value="rose">Rose</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap:4px;">
+                    <button style="flex:1;" onclick="Workspace.triggerDeviceSpawn()">SPAWN MOBILE</button>
+                    <button style="flex:1;" onclick="Workspace.triggerRouterSpawn()">SPAWN ROUTER</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section" id="sim-factory">
+            <h3>SIM Card Factory Allocation</h3>
+            <div style="display:flex; flex-direction:column; gap:4px; overflow-y:auto; flex-grow:1;">
+                <div style="display:flex; gap:4px;">
+                    <input type="text" id="sim-phone-input" placeholder="Digits (e.g. 5550199)" style="width:65%;">
+                    <button onclick="Workspace.generateNewSimCard()" style="width:35%;">BUILD SIM</button>
+                </div>
+                <div style="font-size:9px; color:var(--text-muted); line-height:12px;">
+                    Simulated operational active switches run matrix parameters seamlessly inside global radio environments. Click device trays to link numbers.
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section" id="network-logger">
+            <h3>Central Switchboard Diagnostic Log Stream</h3>
+            <div class="log-stream" id="log-anchor">
+                <div class="log-entry">[SYSTEM] Framework operational initialization complete.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="workspace-container">
+        <div id="workspace-canvas">
+            <div id="selection-marquee"></div>
+        </div>
+    </div>
+
+    <script>
+        const UiEngine = {
+            handleModelChange() {
+                const model = document.getElementById('spawn-model').value;
+                const colorSelect = document.getElementById('spawn-color');
+                colorSelect.innerHTML = '';
+                
+                if (model === 'm-5c') {
+                    colorSelect.innerHTML = `
+                        <option value="neon-blue">Neon Blue</option>
+                        <option value="lime-green">Lime Green</option>
+                        <option value="coral-pink">Coral Pink</option>
+                        <option value="canary-yellow">Canary Yellow</option>
+                    `;
+                } else if (model === 'm-6') {
+                    colorSelect.innerHTML = `
+                        <option value="space-gray">Space Gray</option>
+                        <option value="silver">Silver</option>
+                        <option value="gold">Gold</option>
+                    `;
+                } else if (model === 'm-11') {
+                    colorSelect.innerHTML = `
+                        <option value="matte-black">Matte Black</option>
+                        <option value="monochrome-white">Monochrome White</option>
+                        <option value="purple">Purple</option>
+                        <option value="mint-green">Mint Green</option>
+                        <option value="product-red">Product RED</option>
+                    `;
+                } else if (model === 'm-12' || model === 'm-13') {
+                    colorSelect.innerHTML = `
+                        <option value="pacific-blue">Pacific Blue</option>
+                        <option value="slate-graphite">Slate Graphite</option>
+                        <option value="sierra-blue">Sierra Blue</option>
+                        <option value="alpine-green">Alpine Green</option>
+                        <option value="midnight">Midnight Black</option>
+                        <option value="starlight">Starlight White</option>
+                        <option value="product-red">Product RED</option>
+                    `;
+                } else if (model.startsWith('m-p')) { // Aero OS Phone color metrics
+                    colorSelect.innerHTML = `
+                        <option value="quite-black">Quite Black</option>
+                        <option value="very-silver">Very Silver</option>
+                        <option value="not-pink">Not Pink</option>
+                        <option value="clearly-white">Clearly White</option>
+                        <option value="stormy-black">Stormy Black</option>
+                        <option value="sorta-seafoam">Sorta Seafoam</option>
+                        <option value="obsidian">Obsidian</option>
+                        <option value="porcelain">Porcelain</option>
+                        <option value="bay-blue">Bay Blue</option>
+                        <option value="aloe">Aloe Green</option>
+                        <option value="hazel">Hazel Gray</option>
+                    `;
+                } else {
+                    colorSelect.innerHTML = `
+                        <option value="matte-black">Matte Black</option>
+                        <option value="industrial-gray">Industrial Gray</option>
+                        <option value="monochrome-white">Monochrome White</option>
+                        <option value="rose-gold">Rose Gold</option>
+                        <option value="rose">Rose</option>
+                    `;
+                }
+            }
+        };
+
+        // Central Core State Database Engine
+        const NetworkHub = {
+            sims: {},
+            socialAccounts: {},
+            socialPosts: [],
+            socialDMs: {}, // { "@handle": [{sender, text}] }
+            shortsFeed: [
+                { creator: "@tech_grid", text: "=== AERO OS INFRASTRUCTURE ===\n   .---.\n  /     \\\n  | Aero |\n  \\     /\n   '---'", views: "142K views" },
+                { creator: "@matrix_coder", text: "Matrix execution loops active.\n[ Aero OS vs Classic UI ]\nStreaming dynamic vector blocks.", views: "98K views" },
+                { creator: "@vector_lord", text: "Pure SVG vector rendering inside.\nNo external imagery payload.\nMinimalist workflow rules.", views: "2.1M views" }
+            ],
+            activeCalls: {},
+            routers: {},
+            
+            init() {
+                this.socialAccounts["@network_ops"] = { handle: "@network_ops", pass: "123" };
+                this.socialAccounts["@echo_bot"] = { handle: "@echo_bot", pass: "123" };
+                this.socialPosts.push({ sender: "@network_ops", content: "Mainframe infrastructure testing completely operational. Latency routing active." });
+                this.socialPosts.push({ sender: "@echo_bot", content: "Hello world. Grid virtualization nodes are linked to the switchboard." });
+            },
+            log(subsystem, text) {
+                const anchor = document.getElementById('log-anchor');
+                if(!anchor) return;
+                const div = document.createElement('div');
+                div.className = 'log-entry';
+                div.innerText = `[${subsystem.toUpperCase()}] ${text}`;
+                anchor.appendChild(div);
+                anchor.scrollTop = anchor.scrollHeight;
+            },
+            calculateLatency(phoneIdA, phoneIdB) {
+                const devA = Workspace.devices[phoneIdA];
+                const devB = Workspace.devices[phoneIdB];
+                if(!devA || !devB) return { latency: 10, commonSSID: null };
+                if(devA.connectedWifiSSID !== "DISCONNECTED" && devA.connectedWifiSSID === devB.connectedWifiSSID) {
+                    return { latency: 15, commonSSID: devA.connectedWifiSSID };
+                }
+                const dx = devA.x - devB.x;
+                const dy = devA.y - devB.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                const latency = Math.round(50 + (distance * 0.15));
+                return { latency, commonSSID: null };
+            },
+            routeSMS(fromNum, toNum, text, originatingPhoneId) {
+                const targetSim = this.sims[toNum];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("SMS Core", `Delivery failure: text to +1 (${toNum}) dropped. Target unallocated.`);
+                    return false;
+                }
+                const destPhoneId = targetSim.allocatedTo;
+                const metrics = this.calculateLatency(originatingPhoneId, destPhoneId);
+                
+                this.log("SMS Core", `Routing SMS payload [${fromNum} -> ${toNum}] via grid. Delay: ${metrics.latency}ms`);
+                
+                if(!targetSim.messages[fromNum]) {
+                    targetSim.messages[fromNum] = [];
+                }
+                targetSim.messages[fromNum].push({ direction: 'rcvd', text: text, fromAero: Workspace.devices[originatingPhoneId]?.isAero || false });
+                
+                setTimeout(() => {
+                    const targetDevice = Workspace.devices[destPhoneId];
+                    if(targetDevice) {
+                        targetDevice.receiveSMS(fromNum, text, Workspace.devices[originatingPhoneId]?.isAero || false);
+                    }
+                }, metrics.latency);
+                return true;
+            },
+            initiateCall(fromNum, toNum, originatingPhoneId) {
+                const targetSim = this.sims[toNum];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("Switchboard", `Call Failed: +1 (${toNum}) is out of service area.`);
+                    return "FAILED";
+                }
+                const targetPhoneId = targetSim.allocatedTo;
+                if(targetPhoneId === originatingPhoneId) return "BUSY";
+                const metrics = this.calculateLatency(originatingPhoneId, targetPhoneId);
+                this.log("Switchboard", `Establishing Call Path [${fromNum} -> ${toNum}] | Pipeline Delay: ${metrics.latency}ms`);
+                setTimeout(() => {
+                    const targetDevice = Workspace.devices[targetPhoneId];
+                    if(targetDevice) {
+                        targetDevice.triggerIncomingCall(fromNum, originatingPhoneId);
+                    }
+                }, metrics.latency);
+                return "ROUTING";
+            },
+            connectCall(phoneIdA, phoneIdB) {
+                this.activeCalls[phoneIdA] = phoneIdB;
+                this.activeCalls[phoneIdB] = phoneIdA;
+                this.log("Switchboard", `Circuit Connection Locked: Device ID #${phoneIdA} <=> Device ID #${phoneIdB}`);
+                if(Workspace.devices[phoneIdA]) Workspace.devices[phoneIdA].establishCallConnection();
+                if(Workspace.devices[phoneIdB]) Workspace.devices[phoneIdB].establishCallConnection();
+            },
+            terminateCall(phoneId) {
+                const peerId = this.activeCalls[phoneId];
+                delete this.activeCalls[phoneId];
+                if(peerId) {
+                    delete this.activeCalls[peerId];
+                    const peerDevice = Workspace.devices[peerId];
+                    if(peerDevice) peerDevice.hangupCall(false);
+                }
+            },
+            publishSocialPost(sender, content, originatingPhoneId) {
+                this.socialPosts.unshift({ sender, content });
+                Object.values(Workspace.devices).forEach(dev => {
+                    const metrics = this.calculateLatency(originatingPhoneId, dev.id);
+                    setTimeout(() => {
+                        dev.refreshSocialFeed();
+                    }, metrics.latency);
+                });
+                this.log("NetSpace DB", `${sender} blasted global timeline: "${content}"`);
+            },
+            sendSocialDM(sender, recipient, text, originatingPhoneId) {
+                if(!this.socialDMs[recipient]) this.socialDMs[recipient] = [];
+                if(!this.socialDMs[sender]) this.socialDMs[sender] = [];
+                
+                const payload = { sender, text };
+                this.socialDMs[recipient].push(payload);
+                this.socialDMs[sender].push(payload);
+                
+                Object.values(Workspace.devices).forEach(dev => {
+                    if(dev.activeSocialUser === recipient || dev.activeSocialUser === sender) {
+                        const metrics = this.calculateLatency(originatingPhoneId, dev.id);
+                        setTimeout(() => { dev.refreshSocialDMs(); }, metrics.latency);
+                    }
+                });
+            }
+        };
+
+        // Infinite Canvas Workspace Manager
+        const Workspace = {
+            devices: {},
+            routers: {},
+            deviceIncrementalId: 1,
+            routerIncrementalId: 1,
+            zoom: 1.0,
+            panX: 100,
+            panY: 50,
+            isPanning: false,
+            startX: 0,
+            startY: 0,
+            canvas: null,
+            selectedNodes: [],
+            isDrawingArea: false,
+            marquee: null,
+            marqueeStartX: 0,
+            marqueeStartY: 0,
+
+            init() {
+                const container = document.getElementById('workspace-container');
+                this.canvas = document.getElementById('workspace-canvas');
+                this.marquee = document.getElementById('selection-marquee');
+
+                container.addEventListener('mousedown', (e) => {
+                    if(e.target !== container && e.target !== this.canvas) return;
+                    if(e.shiftKey) {
+                        this.isDrawingArea = true;
+                        const rect = this.canvas.getBoundingClientRect();
+                        this.marqueeStartX = (e.clientX - rect.left) / this.zoom;
+                        this.marqueeStartY = (e.clientY - rect.top) / this.zoom;
+                        this.marquee.style.left = `${this.marqueeStartX}px`;
+                        this.marquee.style.top = `${this.marqueeStartY}px`;
+                        this.marquee.style.width = '0px';
+                        this.marquee.style.height = '0px';
+                        this.marquee.style.display = 'block';
+                        this.clearSelection();
+                    } else {
+                        this.isPanning = true;
+                        container.style.cursor = 'grabbing';
+                        this.startX = e.clientX - this.panX;
+                        this.startY = e.clientY - this.panY;
+                    }
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if(this.isPanning) {
+                        this.panX = e.clientX - this.startX;
+                        this.panY = e.clientY - this.startY;
+                        this.updateTransform();
+                    } else if (this.isDrawingArea) {
+                        const rect = this.canvas.getBoundingClientRect();
+                        const currentX = (e.clientX - rect.left) / this.zoom;
+                        const currentY = (e.clientY - rect.top) / this.zoom;
+                        
+                        const left = Math.min(this.marqueeStartX, currentX);
+                        const top = Math.min(this.marqueeStartY, currentY);
+                        const width = Math.abs(this.marqueeStartX - currentX);
+                        const height = Math.abs(this.marqueeStartY - currentY);
+                        
+                        this.marquee.style.left = `${left}px`;
+                        this.marquee.style.top = `${top}px`;
+                        this.marquee.style.width = `${width}px`;
+                        this.marquee.style.height = `${height}px`;
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    if(this.isPanning) {
+                        this.isPanning = false;
+                        container.style.cursor = 'grab';
+                    } else if(this.isDrawingArea) {
+                        this.isDrawingArea = false;
+                        this.marquee.style.display = 'none';
+                        this.evaluateMarqueeSelection();
+                    }
+                });
+
+                this.updateTransform();
+                
+                // Spawn initial workspace environments
+                this.spawnDevice(80, 60, "m-6", "space-gray");
+                this.spawnDevice(370, 60, "m-x", "matte-black");
+                this.spawnDevice(680, 60, "m-p8", "obsidian"); // Spawn an Android OS instance default
+                this.spawnRouter(400, 420, "Default_Gateway_5G");
+            },
+            updateTransform() {
+                this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
+            },
+            generateNewSimCard() {
+                const input = document.getElementById('sim-phone-input');
+                const rawNum = input.value.trim();
+                if(!rawNum || NetworkHub.sims[rawNum]) {
+                    alert("Invalid digits or cell loop collision.");
+                    return;
+                }
+                NetworkHub.sims[rawNum] = {
+                    phoneNumber: rawNum,
+                    allocatedTo: null,
+                    messages: {}
+                };
+                NetworkHub.log("Factory", `Forged new active card pipeline: +1 (${rawNum})`);
+                Object.values(this.devices).forEach(dev => dev.refreshHardwareTrayMenu());
+                input.value = '';
+            },
+            triggerDeviceSpawn() {
+                const model = document.getElementById('spawn-model').value;
+                const color = document.getElementById('spawn-color').value;
+                const rx = 100 + Math.random() * 400;
+                const ry = 100 + Math.random() * 250;
+                this.spawnDevice(rx, ry, model, color);
+            },
+            triggerRouterSpawn() {
+                const rx = 150 + Math.random() * 450;
+                const ry = 150 + Math.random() * 250;
+                const ssid = `TRANSCEIVER_SSID_${Math.floor(100 + Math.random()*900)}`;
+                this.spawnRouter(rx, ry, ssid);
+            },
+            spawnDevice(x, y, model, color) {
+                const id = this.deviceIncrementalId++;
+                const dev = new PhoneInstance(id, x, y, model, color);
+                this.devices[id] = dev;
+                dev.renderToCanvas(this.canvas);
+                NetworkHub.log("Workspace", `Assembled Device Context Node ID #${id} [${model}:${color}]`);
+                Object.values(this.devices).forEach(d => d.populateWifiDropdownOptions());
+            },
+            spawnRouter(x, y, ssid) {
+                const id = this.routerIncrementalId++;
+                const rt = new RouterInstance(id, x, y, ssid);
+                this.routers[id] = rt;
+                rt.renderToCanvas(this.canvas);
+                NetworkHub.log("Workspace", `Deployed Wi-Fi Base Transceiver ID #${id} SSID: ${ssid}`);
+                Object.values(this.devices).forEach(d => d.populateWifiDropdownOptions());
+            },
+            clearSelection() {
+                this.selectedNodes.forEach(node => {
+                    if(node.domElement) node.domElement.classList.remove('selected-group-node');
+                });
+                this.selectedNodes = [];
+            },
+            evaluateMarqueeSelection() {
+                const mRect = this.marquee.getBoundingClientRect();
+                if(mRect.width < 5 || mRect.height < 5) return;
+                this.selectedNodes = [];
+                Object.values(this.devices).forEach(dev => {
+                    const dRect = dev.domElement.getBoundingClientRect();
+                    if (dRect.left >= mRect.left && dRect.right <= mRect.right && dRect.top >= mRect.top && dRect.bottom <= mRect.bottom) {
+                        this.selectedNodes.push(dev);
+                        dev.domElement.classList.add('selected-group-node');
+                    }
+                });
+                Object.values(this.routers).forEach(rt => {
+                    const rRect = rt.domElement.getBoundingClientRect();
+                    if (rRect.left >= mRect.left && rRect.right <= mRect.right && rRect.top >= mRect.top && rRect.bottom <= mRect.bottom) {
+                        this.selectedNodes.push(rt);
+                        rt.domElement.classList.add('selected-group-node');
+                    }
+                });
+            }
+        };
+
+        // Wireless Router Blueprint
+        class RouterInstance {
+            constructor(id, x, y, ssid) {
+                this.id = id; this.x = x; this.y = y; this.ssid = ssid;
+                this.domElement = null;
+            }
+            renderToCanvas(canvasContainer) {
+                const wrapper = document.createElement('div');
+                wrapper.className = 'router-wrapper';
+                wrapper.style.left = `${this.x}px`;
+                wrapper.style.top = `${this.y}px`;
+                this.domElement = wrapper;
+                this.updateDOMContent();
+                canvasContainer.appendChild(wrapper);
+                this.bindEvents();
+            }
+            updateDOMContent() {
+                this.domElement.innerHTML = `
+                    <div class="router-antenna a1"></div>
+                    <div class="router-antenna a2"></div>
+                    <div style="font-weight:bold; color:#fff; margin-bottom:4px; font-size:11px;">📡 WI-FI ROUTER</div>
+                    <div style="color:var(--text-muted); font-size:9px; margin-bottom:4px;">SSID: <span style="color:#ffcc00">${this.ssid}</span></div>
+                    <div><span class="router-led"></span><span style="font-size:9px;">AP MODE ACTIVE</span></div>
+                `;
+            }
+            bindEvents() {
+                let dragStart = {x:0, y:0};
+                const onMouseDown = (e) => {
+                    if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+                    e.stopPropagation();
+                    dragStart.x = e.clientX; dragStart.y = e.clientY;
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                };
+                const onMouseMove = (e) => {
+                    const dx = (e.clientX - dragStart.x) / Workspace.zoom;
+                    const dy = (e.clientY - dragStart.y) / Workspace.zoom;
+                    dragStart.x = e.clientX; dragStart.y = e.clientY;
+                    if (Workspace.selectedNodes.includes(this)) {
+                        Workspace.selectedNodes.forEach(node => {
+                            node.x += dx; node.y += dy;
+                            node.domElement.style.left = `${node.x}px`;
+                            node.domElement.style.top = `${node.y}px`;
+                        });
+                    } else {
+                        this.x += dx; this.y += dy;
+                        this.domElement.style.left = `${this.x}px`;
+                        this.domElement.style.top = `${this.y}px`;
+                    }
+                };
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                };
+                this.domElement.addEventListener('mousedown', onMouseDown);
+            }
+        }
+
+        // Mobile Device Blueprint
+        class PhoneInstance {
+            constructor(id, x, y, model, color) {
+                this.id = id; this.x = x; this.y = y; this.model = model; this.color = color;
+                this.flipped = false;
+                this.currentSim = null;
+                this.activeApp = "launcher";
+                this.connectedWifiSSID = "DISCONNECTED";
+                this.currentWallpaper = "cyber_grid"; // default custom svg
+                this.chatBackground = "none";
+                this.activeCallData = null;
+                this.activeChatNumber = null;
+                this.activeSocialUser = null;
+                this.socialTab = "timeline";
+                this.contactsList = []; // Array of {name, number}
+                
+                // System operational architecture detection
+                this.isAero = this.model.startsWith("m-p");
+                this.frontTheme = "black";
+            }
+
+            renderToCanvas(canvasContainer) {
+                const wrapper = document.createElement('div');
+                wrapper.className = `phone-wrapper ${this.model}`;
+                wrapper.style.left = `${this.x}px`;
+                wrapper.style.top = `${this.y}px`;
+                wrapper.id = `phone-node-root-${this.id}`;
+                this.domElement = wrapper;
+                this.rebuildChassisDOM();
+                canvasContainer.appendChild(wrapper);
+                this.bindEvents();
+                this.applyWallpaperGraphics();
+                this.refreshHardwareTrayMenu();
+            }
+
+            rebuildChassisDOM() {
+                let camLayout = `<div class="lens"></div>`;
+                if(this.model === 'm-8p') camLayout = `<div class="lens"></div><div class="lens"></div>`;
+                if(this.model === 'm-x' || this.model === 'm-12' || this.model === 'm-13') camLayout = `<div class="lens"></div><div style="height:4px;"></div><div class="lens"></div>`;
+                if(this.model === 'm-11') camLayout = `<div class="lens"></div><div class="lens"></div><div class="lens"></div><div></div>`;
+                if(this.isAero && !this.model.startsWith("m-p1") && !this.model.startsWith("m-p3")) {
+                    camLayout = `<div class="lens" style="margin:0;"></div><div class="lens" style="margin:0;"></div><div class="lens" style="margin:0;"></div>`;
+                }
+
+                let topBezelArchitecture = `<div class="notch"><div class="front-cam"></div><div class="speaker-grille"></div></div>`;
+                if(this.isAero) {
+                    topBezelArchitecture = `<div class="aero-punch"></div>`;
+                }
+
+                let modelLabel = this.model.toUpperCase().replace("M-", "MODEL ");
+                if(this.isAero) modelLabel = this.model.toUpperCase().replace("M-P", "AERO P");
+
+                this.domElement.innerHTML = `
+                    <div class="flip-tab" onclick="Workspace.devices[${this.id}].toggleFlipChassis()">🔄 FLIP</div>
+                    <div class="phone-card ${this.isAero ? 'aero-system' : ''}" data-color="${this.color}" data-front-theme="${this.frontTheme}" style="border-color: ${this.getBezelHexColor()};">
+                        
+                        <div class="phone-face phone-front" style="border-color: ${this.getBezelHexColor()};">
+                            <div class="top-bezel">${topBezelArchitecture}</div>
+                            <div class="screen" id="screen-viewport-${this.id}">
+                                <div class="status-bar">
+                                    <div class="status-left">
+                                        <span class="carrier-tag">NO LINK</span>
+                                        <span class="signal-bars">▱▱▱▱</span>
+                                    </div>
+                                    <div class="status-right">
+                                        <span class="wifi-indicator-tag" style="font-size:8px;">📶 OFF</span>
+                                        <span class="sim-time">21:08</span>
+                                        <span>🔋100%</span>
+                                    </div>
+                                </div>
+                                <div class="app-space">
+                                    
+                                    <div class="inc-call-overlay">
+                                        <div style="font-size:11px; color:#aaa; margin-bottom:15px;">INCOMING PATH TELEPHONY</div>
+                                        <div class="inc-caller-id" style="font-size:14px; font-weight:bold; margin-bottom:25px;">+1 (000)</div>
+                                        <div style="display:flex; gap:12px;">
+                                            <button class="accept-btn" style="background:#0f330f; border-color:#0f550f; font-weight:bold;">ANSWER</button>
+                                            <button class="decline-btn" style="background:#330f0f; border-color:#550f0f;">DROP</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view active" data-app="launcher">
+                                        <div class="launcher-grid">
+                                            <div class="app-icon" data-launch="phone"><span>📞</span>Phone</div>
+                                            <div class="app-icon" data-launch="messages"><span>💬</span>Messages</div>
+                                            <div class="app-icon" data-launch="contacts"><span>👤</span>Contacts</div>
+                                            <div class="app-icon" data-launch="netspace"><span>🌐</span>NetSpace</div>
+                                            <div class="app-icon" data-launch="settings"><span>⚙️</span>Settings</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="phone">
+                                        <div class="app-header"><span>📞 Dialer</span><button class="app-close">X</button></div>
+                                        <div class="app-body">
+                                            <div class="dialer-output"></div>
+                                            <div class="dialer-pad">
+                                                <div class="dial-btn">1</div><div class="dial-btn">2</div><div class="dial-btn">3</div>
+                                                <div class="dial-btn">4</div><div class="dial-btn">5</div><div class="dial-btn">6</div>
+                                                <div class="dial-btn">7</div><div class="dial-btn">8</div><div class="dial-btn">9</div>
+                                                <div class="dial-btn">*</div><div class="dial-btn">0</div><div class="dial-btn">#</div>
+                                            </div>
+                                            <div class="active-call-state" style="display:none; text-align:center; padding:10px; background:#0a0a0a; border:1px solid #222; border-radius:4px;">
+                                                <div class="call-status-label" style="color:#00ff00; font-size:11px; margin-bottom:10px;">CONNECTED CALL</div>
+                                                <button class="phone-hangup-trigger" style="background:#401010; width:100%;">TERMINATE</button>
+                                            </div>
+                                            <div class="call-actions" style="margin-top:4px;">
+                                                <button class="phone-clear-trigger" style="flex:1;">CLR</button>
+                                                <button class="phone-call-trigger" style="flex:2; background:#113311; font-weight:bold;">DIAL LINK</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="messages">
+                                        <div class="app-header"><span>💬 Messages</span><button class="app-close">X</button></div>
+                                        <div class="app-body" style="padding:4px;">
+                                            <div class="msg-view-container" data-view="threads" style="display:flex; flex-direction:column; height:100%;">
+                                                <div class="utility-row">
+                                                    <input type="text" class="sms-target-input" placeholder="Target Phone Number">
+                                                    <button class="sms-new-thread-btn">CHAT</button>
+                                                </div>
+                                                <div class="msg-threads" style="flex-grow:1; overflow-y:auto;"></div>
+                                            </div>
+                                            <div class="msg-view-container" data-view="chat" style="display:none; flex-direction:column; height:100%;">
+                                                <div style="display:flex; justify-content:space-between; align-items:center; background:#111; padding:4px; margin-bottom:2px;">
+                                                    <button class="back-to-threads-btn">&lt; Back</button>
+                                                    <span class="active-chat-title" style="font-weight:bold; font-size:10px;">+1</span>
+                                                    <select class="chat-bg-selector" style="font-size:8px; padding:1px;" onchange="Workspace.devices[${this.id}].handleChatBgChange(this.value)">
+                                                        <option value="none">BG: Solid</option>
+                                                        <option value="matrix">BG: Matrix</option>
+                                                        <option value="sunset">BG: Sunset</option>
+                                                    </select>
+                                                </div>
+                                                <div class="chat-stream"></div>
+                                                <div class="utility-row">
+                                                    <input type="text" class="sms-input-field" placeholder="Type text payload...">
+                                                    <button class="sms-send-trigger" style="background:#113311;">SEND</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="contacts">
+                                        <div class="app-header"><span>👤 Contacts</span><button class="app-close">X</button></div>
+                                        <div class="app-body">
+                                            <div style="display:flex; flex-direction:column; gap:4px; margin-bottom:6px; border-bottom:1px solid #222; padding-bottom:6px;">
+                                                <input type="text" class="contact-name-input" placeholder="Custom Name">
+                                                <input type="text" class="contact-num-input" placeholder="Phone Number">
+                                                <button class="contact-save-btn" style="background:#113311;">+ SAVE CONTACT</button>
+                                            </div>
+                                            <div class="contacts-list-container" style="flex-grow:1; overflow-y:auto;"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="netspace">
+                                        <div class="app-header"><span>🌐 NetSpace Matrix</span><button class="app-close">X</button></div>
+                                        <div class="soc-tab-nav">
+                                            <div class="soc-tab-btn active" data-tab="timeline">TIMELINE</div>
+                                            <div class="soc-tab-btn" data-tab="dms">DIRECT MSG</div>
+                                            <div class="soc-tab-btn" data-tab="shorts">SHORTS</div>
+                                        </div>
+                                        <div class="app-body" style="padding:0;">
+                                            <div class="soc-timeline-window" style="display:flex; flex-direction:column; height:100%; padding:6px;">
+                                                <div class="soc-acc-bar"></div>
+                                                <div class="soc-auth-screen" style="display:flex; flex-direction:column; gap:4px; margin-top:20px;">
+                                                    <input type="text" class="soc-handle-input" placeholder="Desired Handle (e.g. @brad)">
+                                                    <button class="soc-login-btn" style="background:#222;">AUTH LINK NODE</button>
+                                                </div>
+                                                <div class="soc-main-screen" style="display:none; flex-direction:column; height:100%; gap:4px;">
+                                                    <div class="utility-row">
+                                                        <input type="text" class="soc-post-input" placeholder="Blast timeline matrix parameter...">
+                                                        <button class="soc-blast-btn" style="background:#333;">BLAST</button>
+                                                    </div>
+                                                    <div class="soc-timeline" style="flex-grow:1; overflow-y:auto;"></div>
+                                                </div>
+                                            </div>
+                                            <div class="soc-dm-window" style="padding:6px; height:100%;">
+                                                <div class="soc-dm-auth-nag" style="text-align:center; color:#777; margin-top:20px;">Please login to Timeline first.</div>
+                                                <div class="soc-dm-active-box" style="display:none; flex-direction:column; height:100%;">
+                                                    <div class="utility-row">
+                                                        <input type="text" class="soc-dm-recipient-input" placeholder="Recipient (e.g. @echo_bot)">
+                                                    </div>
+                                                    <div class="soc-dm-stream" style="flex-grow:1; background:#050505; border:1px solid #222; overflow-y:auto; padding:4px; margin-bottom:4px;"></div>
+                                                    <div class="utility-row">
+                                                        <input type="text" class="soc-dm-text-input" placeholder="Secure DM text...">
+                                                        <button class="soc-dm-send-btn">SEND</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="soc-shorts-window"></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="settings">
+                                        <div class="app-header"><span>⚙️ Settings</span><button class="app-close">X</button></div>
+                                        <div class="app-body">
+                                            <div style="margin-bottom:8px;">
+                                                <label style="font-size:9px; color:var(--text-muted);">LINK WIRELESS TRANSCEIVER:</label>
+                                                <select class="settings-wifi-selector" style="width:100%; margin-top:2px;" onchange="Workspace.devices[${this.id}].handleWifiLinkChange(this.value)"></select>
+                                            </div>
+                                            <div style="margin-bottom:8px;">
+                                                <label style="font-size:9px; color:var(--text-muted);">VECTOR SVG WALLPAPER GRAPHIC:</label>
+                                                <select class="settings-wallpaper-selector" style="width:100%; margin-top:2px;" onchange="Workspace.devices[${this.id}].handleWallpaperMatrixChange(this.value)">
+                                                    <option value="cyber_grid">Vector: Cyber Grid Matrix</option>
+                                                    <option value="industrial_plate">Vector: Industrial Plate</option>
+                                                    <option value="neon_pulse">Vector: Neon Pulse Waves</option>
+                                                    <option value="model_spec">Vector: Model Specific Graphic</option>
+                                                    <option value="none">Solid Color Workspace Black</option>
+                                                </select>
+                                            </div>
+                                            <div style="font-size:9px; color:var(--text-muted); border-top:1px solid #222; padding-top:4px;">
+                                                Device Archetype: ${this.isAero ? 'Aero Platform (Android Lineage)' : 'Standard Platform (Topology Lineage)'}<br>
+                                                Node Core Layer Secure Link Active.
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                                <div class="home-bar" onclick="Workspace.devices[${this.id}].switchApp('launcher')"></div>
+                            </div>
+                            <div class="bottom-bezel">
+                                <div class="home-button" onclick="Workspace.devices[${this.id}].switchApp('launcher')"></div>
+                            </div>
+                        </div>
+
+                        <div class="phone-face phone-back">
+                            <div class="antenna-line horiz-top"></div>
+                            <div class="antenna-line horiz-bottom"></div>
+                            <div class="cam-housing">${camLayout}</div>
+                            <div class="hardware-info">
+                                <div style="font-weight: bold; margin-bottom: 2px;">${modelLabel}</div>
+                                <div>Physical Node ID Stack: #${this.id}</div>
+                            </div>
+                            <div style="font-size:8px; opacity:0.4; font-weight:bold; letter-spacing:1px; margin-bottom: 5px;">TOPOLOGY FIELD DEVICE CORP.</div>
+                        </div>
+
+                        <div class="hardware-sim-tray-bracket">
+                            <span class="side-tray-icon">▫️</span>
+                            <span class="side-tray-label">Radio SIM Card Link</span>
+                            <select class="side-sim-select" onchange="Workspace.devices[${this.id}].handleSimTrayInsertion(this.value)"></select>
+                        </div>
+
+                    </div>
+                    <div class="spatial-hud">
+                        NODE-00${this.id}<br>
+                        <span class="hud-coords">(${Math.round(this.x)}, ${Math.round(this.y)})</span>
+                    </div>
+                `;
+            }
+
+            getBezelHexColor() {
+                const colors = {
+                    'matte-black': '#141414', 'industrial-gray': '#2e2e2e', 'monochrome-white': '#dcdcdc',
+                    'rose-gold': '#fad6d6', 'rose': '#ffb6c1', 'neon-blue': '#00a3e0', 'lime-green': '#4cd964',
+                    'coral-pink': '#ff4f6a', 'canary-yellow': '#ffcc00', 'space-gray': '#555559', 'silver': '#e3e4e6',
+                    'gold': '#f9e4b7', 'purple': '#d1cddb', 'mint-green': '#addece', 'product-red': '#d92632',
+                    'pacific-blue': '#2b4353', 'slate-graphite': '#38393d', 'sierra-blue': '#a7c1d6', 'alpine-green': '#4f5d4e',
+                    'midnight': '#1a232e', 'starlight': '#faf6f0', 'quite-black': '#2c2c2e', 'very-silver': '#e5e5ea',
+                    'not-pink': '#f7d6d0', 'clearly-white': '#fcfcfc', 'stormy-black': '#3a3a3c', 'sorta-seafoam': '#bdf0e2',
+                    'obsidian': '#1c1a17', 'porcelain': '#f3f0eb', 'bay-blue': '#8ab4f8', 'aloe': '#9bf1c4', 'hazel': '#5a6157'
+                };
+                return colors[this.color] || '#333';
+            }
+
+            toggleFlipChassis() {
+                this.flipped = !this.flipped;
+                if(this.flipped) {
+                    this.domElement.classList.add('flipped');
+                } else {
+                    this.domElement.classList.remove('flipped');
+                }
+            }
+
+            bindEvents() {
+                let dragStart = {x:0, y:0};
+                const onMouseDown = (e) => {
+                    if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT' || e.target.classList.contains('hardware-sim-tray-bracket') || e.target.classList.contains('flip-tab')) return;
+                    e.stopPropagation();
+                    dragStart.x = e.clientX; dragStart.y = e.clientY;
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                };
+                const onMouseMove = (e) => {
+                    const dx = (e.clientX - dragStart.x) / Workspace.zoom;
+                    const dy = (e.clientY - dragStart.y) / Workspace.zoom;
+                    dragStart.x = e.clientX; dragStart.y = e.clientY;
+                    if (Workspace.selectedNodes.includes(this)) {
+                        Workspace.selectedNodes.forEach(node => {
+                            node.x += dx; node.y += dy;
+                            node.domElement.style.left = `${node.x}px`;
+                            node.domElement.style.top = `${node.y}px`;
+                            if(node.updateCoordsHud) node.updateCoordsHud();
+                        });
+                    } else {
+                        this.x += dx; this.y += dy;
+                        this.domElement.style.left = `${this.x}px`;
+                        this.domElement.style.top = `${this.y}px`;
+                        this.updateCoordsHud();
+                    }
+                };
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                };
+                this.domElement.addEventListener('mousedown', onMouseDown);
+
+                // Hardware simulation side tray mechanics interaction
+                const tray = this.domElement.querySelector('.hardware-sim-tray-bracket');
+                tray.addEventListener('click', (e) => {
+                    if(e.target.tagName === 'SELECT') return;
+                    tray.classList.toggle('expanded');
+                });
+
+                // Application launcher event bindings
+                this.domElement.querySelectorAll('.app-icon').forEach(icon => {
+                    icon.addEventListener('click', () => {
+                        this.switchApp(icon.getAttribute('data-launch'));
+                    });
+                });
+                this.domElement.querySelectorAll('.app-close').forEach(btn => {
+                    btn.addEventListener('click', () => this.switchApp('launcher'));
+                });
+
+                // Telephony interaction setup
+                const dialOutput = this.domElement.querySelector('.dialer-output');
+                this.domElement.querySelectorAll('.dial-btn').forEach(btn => {
+                    btn.addEventListener('click', () => dialOutput.innerText += btn.innerText);
+                });
+                this.domElement.querySelector('.phone-clear-trigger').addEventListener('click', () => dialOutput.innerText = '');
+                this.domElement.querySelector('.phone-call-trigger').addEventListener('click', () => {
+                    const target = dialOutput.innerText.trim();
+                    if(!this.currentSim) {
+                        alert("NO SIM CARD DETECTED inside expansion bracket tray registry mapping.");
+                        return;
+                    }
+                    if(!target) return;
+                    this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                    this.domElement.querySelector('.dialer-pad').style.display = 'none';
+                    const stateBox = this.domElement.querySelector('.active-call-state');
+                    stateBox.style.display = 'block';
+                    stateBox.querySelector('.call-status-label').innerText = "ROUTING LINK SIGNAL...";
+                    
+                    const res = NetworkHub.initiateCall(this.currentSim, target, this.id);
+                    if(res === "FAILED") {
+                        stateBox.querySelector('.call-status-label').innerText = "UNREACHABLE ROUTE";
+                    } else if(res === "BUSY") {
+                        stateBox.querySelector('.call-status-label').innerText = "CIRCUIT BUSY CONFIG";
+                    } else {
+                        this.activeCallData = { role: 'caller', targetNumber: target };
+                    }
+                });
+                this.domElement.querySelector('.phone-hangup-trigger').addEventListener('click', () => this.hangupCall(true));
+                
+                this.domElement.querySelector('.accept-btn').addEventListener('click', () => {
+                    if(this.activeCallData && this.activeCallData.peerPhoneId) {
+                        NetworkHub.connectCall(this.id, this.activeCallData.peerPhoneId);
+                    }
+                });
+                this.domElement.querySelector('.decline-btn').addEventListener('click', () => this.hangupCall(true));
+
+                // Messaging window action mapping rules
+                this.domElement.querySelector('.back-to-threads-btn').addEventListener('click', () => {
+                    this.domElement.querySelector('[data-view="chat"]').style.display = 'none';
+                    this.domElement.querySelector('[data-view="threads"]').style.display = 'flex';
+                    this.renderThreadsList();
+                });
+                this.domElement.querySelector('.sms-new-thread-btn').addEventListener('click', () => {
+                    const numInput = this.domElement.querySelector('.sms-target-input');
+                    const num = numInput.value.trim();
+                    if(!num) return;
+                    this.activeChatNumber = num;
+                    this.domElement.querySelector('[data-view="threads"]').style.display = 'none';
+                    this.domElement.querySelector('[data-view="chat"]').style.display = 'flex';
+                    this.renderChatWindow(num);
+                    numInput.value = '';
+                });
+                this.domElement.querySelector('.sms-send-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.sms-input-field');
+                    const message = input.value.trim();
+                    if(!message || !this.currentSim || !this.activeChatNumber) return;
+                    const simulatedTarget = this.activeChatNumber;
+                    
+                    if(!NetworkHub.sims[this.currentSim].messages[simulatedTarget]) {
+                        NetworkHub.sims[this.currentSim].messages[simulatedTarget] = [];
+                    }
+                    NetworkHub.sims[this.currentSim].messages[simulatedTarget].push({ direction: 'sent', text: message });
+                    
+                    this.renderChatWindow(simulatedTarget);
+                    NetworkHub.routeSMS(this.currentSim, simulatedTarget, message, this.id);
+                    input.value = '';
+                });
+
+                // Contacts interaction handler binding
+                this.domElement.querySelector('.contact-save-btn').addEventListener('click', () => {
+                    const nameIn = this.domElement.querySelector('.contact-name-input');
+                    const numIn = this.domElement.querySelector('.contact-num-input');
+                    const name = nameIn.value.trim();
+                    const num = numIn.value.trim();
+                    if(!name || !num) return;
+                    this.contactsList.push({ name, number: num });
+                    nameIn.value = ''; numIn.value = '';
+                    this.refreshContactsDisplay();
+                });
+
+                // Netspace dynamic multi-tab handling rules
+                this.domElement.querySelectorAll('.soc-tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        this.domElement.querySelectorAll('.soc-tab-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        this.socialTab = btn.getAttribute('data-tab');
+                        this.evalSocialAppTabState();
+                    });
+                });
+
+                this.domElement.querySelector('.soc-login-btn').addEventListener('click', () => {
+                    const hInput = this.domElement.querySelector('.soc-handle-input');
+                    const val = hInput.value.trim();
+                    if(!val.startsWith('@') || val.length < 3) {
+                        alert("Handle must start with @ protocol syntax.");
+                        return;
+                    }
+                    this.activeSocialUser = val;
+                    if(!NetworkHub.socialAccounts[val]) {
+                        NetworkHub.socialAccounts[val] = { handle: val, pass: "123" };
+                    }
+                    this.renderSocialAppView();
+                });
+
+                this.domElement.querySelector('.soc-blast-btn').addEventListener('click', () => {
+                    const pInput = this.domElement.querySelector('.soc-post-input');
+                    const txt = pInput.value.trim();
+                    if(!txt || !this.activeSocialUser) return;
+                    NetworkHub.publishSocialPost(this.activeSocialUser, txt, this.id);
+                    pInput.value = '';
+                });
+
+                this.domElement.querySelector('.soc-dm-send-btn').addEventListener('click', () => {
+                    const recIn = this.domElement.querySelector('.soc-dm-recipient-input');
+                    const txtIn = this.domElement.querySelector('.soc-dm-text-input');
+                    const rec = recIn.value.trim();
+                    const txt = txtIn.value.trim();
+                    if(!rec || !txt || !this.activeSocialUser) return;
+                    NetworkHub.sendSocialDM(this.activeSocialUser, rec, txt, this.id);
+                    txtIn.value = '';
+                });
+            }
+
+            updateCoordsHud() {
+                const hud = this.domElement.querySelector('.hud-coords');
+                if(hud) hud.innerText = `(${Math.round(this.x)}, ${Math.round(this.y)})`;
+            }
+
+            switchApp(appName) {
+                this.activeApp = appName;
+                this.domElement.querySelectorAll('.app-view').forEach(view => {
+                    view.classList.remove('active');
+                });
+                const targetView = this.domElement.querySelector(`[data-app="${appName}"]`);
+                if(targetView) targetView.classList.add('active');
+                
+                if(appName === 'settings') {
+                    this.populateWifiDropdownOptions();
+                } else if(appName === 'messages') {
+                    this.domElement.querySelector('[data-view="chat"]').style.display = 'none';
+                    this.domElement.querySelector('[data-view="threads"]').style.display = 'flex';
+                    this.renderThreadsList();
+                } else if(appName === 'contacts') {
+                    this.refreshContactsDisplay();
+                } else if(appName === 'netspace') {
+                    this.renderSocialAppView();
+                }
+            }
+
+            applyWallpaperGraphics() {
+                const vp = this.domElement.querySelector(`#screen-viewport-${this.id}`);
+                if(!vp) return;
+                
+                let svgContent = "";
+                
+                if(this.currentWallpaper === 'cyber_grid') {
+                    svgContent = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'><rect width='40' height='40' fill='%23050a05'/><path d='M 40 0 L 0 0 0 40' fill='none' stroke='%2300ff00' stroke-width='0.5' stroke-opacity='0.15'/></svg>")`;
+                } else if(this.currentWallpaper === 'industrial_plate') {
+                    svgContent = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='60'><rect width='60' height='60' fill='%231a1a1a'/><circle cx='5' cy='5' r='2' fill='%23333'/><circle cx='55' cy='5' r='2' fill='%2333///'/><circle cx='5', cy='55' r='2' fill='%23333'/><circle cx='55' cy='55' r='2' fill='%23333'/><path d='M 0 30 L 60 30 M 30 0 L 30 60' fill='none' stroke='%23252525' stroke-width='1'/></svg>")`;
+                } else if(this.currentWallpaper === 'neon_pulse') {
+                    svgContent = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%230b001a'/><path d='M0 50 Q 25 20, 50 50 T 100 50' fill='none' stroke='%23ff007f' stroke-width='1.5'/><path d='M0 60 Q 25 40, 50 60 T 100 60' fill='none' stroke='%237f00ff' stroke-width='1' opacity='0.5'/></svg>")`;
+                } else if(this.currentWallpaper === 'model_spec') {
+                    if(this.isAero) {
+                        svgContent = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%23223322'/><circle cx='50' cy='50' r='35' fill='none' stroke='%234caf50' stroke-width='2' stroke-dasharray='4'/></svg>")`;
+                    } else {
+                        svgContent = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><rect width='100' height='100' fill='%23112233'/><polygon points='50,15 90,85 10,85' fill='none' stroke='%23007aff' stroke-width='2'/></svg>")`;
+                    }
+                } else {
+                    vp.style.backgroundImage = "none";
+                    vp.style.backgroundColor = "#000000";
+                    return;
+                }
+                vp.style.backgroundImage = svgContent;
+            }
+
+            handleWallpaperMatrixChange(val) {
+                this.currentWallpaper = val;
+                this.applyWallpaperGraphics();
+                NetworkHub.log("Hardware UI", `Node #${this.id} updated system wallpaper matrix to: ${val}`);
+            }
+
+            handleChatBgChange(val) {
+                this.chatBackground = val;
+                if(this.activeChatNumber) this.renderChatWindow(this.activeChatNumber);
+            }
+
+            applyChatViewBackground(element) {
+                if(this.chatBackground === 'matrix') {
+                    element.style.backgroundImage = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='30' height='30'><rect width='30' height='30' fill='%23020a02'/><text x='5' y='20' fill='%2300ff00' font-family='monospace' font-size='8' opacity='0.2'>1 0 1</text></svg>")`;
+                } else if(this.chatBackground === 'sunset') {
+                    element.style.backgroundImage = `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><linearGradient id='g' x1='0%25' y1='0%25' x2='0%25' y2='100%25'><stop offset='0%25' stop-color='%23401020'/><stop offset='100%25' stop-color='%23100510'/></linearGradient><rect width='100' height='100' fill='url(%23g)'/><circle cx='50' cy='100' r='30' fill='%23ff5500' opacity='0.2'/></svg>")`;
+                } else {
+                    element.style.backgroundImage = "none";
+                    element.style.backgroundColor = "#030303";
+                }
+            }
+
+            populateWifiDropdownOptions() {
+                const select = this.domElement.querySelector('.settings-wifi-selector');
+                if(!select) return;
+                select.innerHTML = '<option value="DISCONNECTED">[ SCANNING FOR AIR OPEN TRANSCEIVERS ]</option>';
+                Object.values(Workspace.routers).forEach(r => {
+                    const opt = document.createElement('option');
+                    opt.value = r.ssid;
+                    opt.innerText = `Wi-Fi Transceiver: ${r.ssid}`;
+                    select.appendChild(opt);
+                });
+                select.value = this.connectedWifiSSID;
+            }
+
+            handleWifiLinkChange(val) {
+                this.connectedWifiSSID = val;
+                this.updateStatusBar();
+                NetworkHub.log("Radio UI", `Device Instance #${this.id} locked logic antenna onto network lane: ${val}`);
+            }
+
+            refreshHardwareTrayMenu() {
+                const select = this.domElement.querySelector('.side-sim-select');
+                if(!select) return;
+                select.innerHTML = '<option value="NONE">[ DISENGAGED ]</option>';
+                Object.keys(NetworkHub.sims).forEach(num => {
+                    const sim = NetworkHub.sims[num];
+                    if(sim.allocatedTo === null || sim.allocatedTo === this.id) {
+                        const opt = document.createElement('option');
+                        opt.value = num;
+                        opt.innerText = `SIM Slot: +1 (${num})`;
+                        select.appendChild(opt);
+                    }
+                });
+                if(this.currentSim) {
+                    select.value = this.currentSim;
+                }
+            }
+
+            handleSimTrayInsertion(numVal) {
+                if(this.currentSim) {
+                    NetworkHub.sims[this.currentSim].allocatedTo = null;
+                }
+                if(numVal === "NONE") {
+                    this.currentSim = null;
+                    NetworkHub.log("Hardware Core", `SIM Card Tray pulled. Device Node #${this.id} disconnected from radio matrix.`);
+                } else {
+                    this.currentSim = numVal;
+                    NetworkHub.sims[numVal].allocatedTo = this.id;
+                    NetworkHub.log("Hardware Core", `SIM Lock Engagement. Number +1 (${numVal}) operational on Node ID #${this.id}`);
+                }
+                this.updateStatusBar();
+                Object.values(Workspace.devices).forEach(d => d.refreshHardwareTrayMenu());
+            }
+
+            updateStatusBar() {
+                const tag = this.domElement.querySelector('.carrier-tag');
+                const bars = this.domElement.querySelector('.signal-bars');
+                const wifiTag = this.domElement.querySelector('.wifi-indicator-tag');
+                
+                if(this.currentSim) {
+                    tag.innerText = `+1 (${this.currentSim})`;
+                    bars.innerText = "▰▰▰▰";
+                    bars.style.color = "#00ff00";
+                } else {
+                    tag.innerText = "NO LINK";
+                    bars.innerText = "▱▱▱▱";
+                    bars.style.color = "inherit";
+                }
+
+                if(this.connectedWifiSSID !== "DISCONNECTED") {
+                    wifiTag.innerText = `📶 ${this.connectedWifiSSID.substring(0,8)}..`;
+                    wifiTag.style.color = "#00ffff";
+                } else {
+                    wifiTag.innerText = "📶 OFF";
+                    wifiTag.style.color = "inherit";
+                }
+            }
+
+            triggerIncomingCall(fromNum, peerPhoneId) {
+                this.activeCallData = { role: 'receiver', targetNumber: fromNum, peerPhoneId: peerPhoneId };
+                const overlay = this.domElement.querySelector('.inc-call-overlay');
+                overlay.querySelector('.inc-caller-id').innerText = `+1 (${fromNum})`;
+                overlay.classList.add('active');
+            }
+
+            establishCallConnection() {
+                this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                this.switchApp('phone');
+                this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                this.domElement.querySelector('.dialer-pad').style.display = 'none';
+                const stateBox = this.domElement.querySelector('.active-call-state');
+                stateBox.style.display = 'block';
+                stateBox.querySelector('.call-status-label').innerText = "CIRCUIT ACTIVE LOCK";
+            }
+
+            hangupCall(notifyNetwork = true) {
+                if(notifyNetwork) {
+                    NetworkHub.terminateCall(this.id);
+                }
+                this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                this.domElement.querySelector('.active-call-state').style.display = 'none';
+                this.domElement.querySelector('.phone-call-trigger').style.display = 'block';
+                this.domElement.querySelector('.dialer-pad').style.display = 'grid';
+                this.domElement.querySelector('.dialer-output').innerText = '';
+                this.activeCallData = null;
+                NetworkHub.log("Switchboard", `Circuit Connection Dropped on Node Instance #${this.id}`);
+            }
+
+            receiveSMS(fromNum, text, fromAero) {
+                if(this.activeApp === 'messages') {
+                    this.renderThreadsList();
+                    if(this.activeChatNumber === fromNum) {
+                        this.renderChatWindow(fromNum);
+                    }
+                }
+            }
+
+            renderThreadsList() {
+                const container = this.domElement.querySelector('.msg-threads');
+                if(!container) return;
+                container.innerHTML = '';
+                if(!this.currentSim || !NetworkHub.sims[this.currentSim]) return;
+                
+                const threads = NetworkHub.sims[this.currentSim].messages;
+                Object.keys(threads).forEach(num => {
+                    const row = document.createElement('div');
+                    row.className = 'thread-row';
+                    row.innerText = `Line Link: +1 (${num})`;
+                    row.addEventListener('click', () => {
+                        this.activeChatNumber = num;
+                        this.domElement.querySelector('[data-view="threads"]').style.display = 'none';
+                        this.domElement.querySelector('[data-view="chat"]').style.display = 'flex';
+                        this.renderChatWindow(num);
+                    });
+                    container.appendChild(row);
+                });
+            }
+
+            renderChatWindow(num) {
+                this.domElement.querySelector('.active-chat-title').innerText = `+1 (${num})`;
+                const stream = this.domElement.querySelector('.chat-stream');
+                stream.innerHTML = '';
+                this.applyChatViewBackground(stream);
+
+                if(!this.currentSim || !NetworkHub.sims[this.currentSim]) return;
+                const msgs = NetworkHub.sims[this.currentSim].messages[num] || [];
+                
+                msgs.forEach(m => {
+                    const el = document.createElement('div');
+                    el.className = 'chat-bubble';
+                    if(m.direction === 'sent') {
+                        el.classList.add('sent');
+                        el.innerText = m.text;
+                    } else {
+                        el.classList.add('rcvd');
+                        // Logic for bubble coloring
+                        if(m.fromAero) {
+                            el.classList.add('aero-lime');
+                        } else {
+                            el.classList.add('regular-blue');
+                        }
+                        el.innerText = m.text;
+                    }
+                    stream.appendChild(el);
+                });
+                stream.scrollTop = stream.scrollHeight;
+            }
+
+            refreshContactsDisplay() {
+                const container = this.domElement.querySelector('.contacts-list-container');
+                if(!container) return;
+                container.innerHTML = '';
+                this.contactsList.forEach(c => {
+                    const div = document.createElement('div');
+                    div.className = 'contact-entry';
+                    
+                    const monogramLetter = c.name.trim().charAt(0) || '?';
+                    
+                    div.innerHTML = `
+                        <div class="contact-monogram">${monogramLetter}</div>
+                        <div style="flex-grow:1;">
+                            <div style="font-weight:bold; font-size:11px;">${c.name}</div>
+                            <div style="color:#777; font-size:9px;">+1 (${c.number})</div>
+                        </div>
+                        <button class="contact-call-now-btn" style="padding:2px 6px; font-size:9px;">CALL</button>
+                    `;
+                    
+                    div.querySelector('.contact-call-now-btn').addEventListener('click', () => {
+                        this.switchApp('phone');
+                        this.domElement.querySelector('.dialer-output').innerText = c.number;
+                    });
+                    
+                    container.appendChild(div);
+                });
+            }
+
+            evalSocialAppTabState() {
+                const tl = this.domElement.querySelector('.soc-timeline-window');
+                const dm = this.domElement.querySelector('.soc-dm-window');
+                const sh = this.domElement.querySelector('.soc-shorts-window');
+                
+                tl.style.display = 'none';
+                dm.style.display = 'none';
+                sh.style.display = 'none';
+
+                if(this.socialTab === 'timeline') {
+                    tl.style.display = 'flex';
+                } else if(this.socialTab === 'dms') {
+                    dm.style.display = 'flex';
+                    this.refreshSocialDMs();
+                } else if(this.socialTab === 'shorts') {
+                    sh.style.display = 'flex';
+                    this.refreshSocialShorts();
+                }
+            }
+
+            renderSocialAppView() {
+                this.evalSocialAppTabState();
+                const bar = this.domElement.querySelector('.soc-acc-bar');
+                const authScreen = this.domElement.querySelector('.soc-auth-screen');
+                const mainScreen = this.domElement.querySelector('.soc-main-screen');
+                if(!bar) return;
+                bar.innerHTML = '';
+
+                Object.keys(NetworkHub.socialAccounts).forEach(handle => {
+                    const box = document.createElement('div');
+                    box.className = 'mini-avatar';
+                    if(this.activeSocialUser === handle) box.className += ' active';
+                    box.innerText = handle;
+                    box.addEventListener('click', () => {
+                        if(this.activeSocialUser) {
+                            this.domElement.querySelector('.soc-dm-recipient-input').value = handle;
+                        }
+                    });
+                    bar.appendChild(box);
+                });
+
+                if(!this.activeSocialUser) {
+                    mainScreen.style.display = 'none';
+                    authScreen.style.display = 'flex';
+                    this.domElement.querySelector('.soc-dm-auth-nag').style.display = 'block';
+                    this.domElement.querySelector('.soc-dm-active-box').style.display = 'none';
+                } else {
+                    authScreen.style.display = 'none';
+                    mainScreen.style.display = 'flex';
+                    this.domElement.querySelector('.soc-dm-auth-nag').style.display = 'none';
+                    this.domElement.querySelector('.soc-dm-active-box').style.display = 'flex';
+                    this.refreshSocialTimeline();
+                }
+            }
+
+            refreshSocialTimeline() {
+                const timeline = this.domElement.querySelector('.soc-timeline');
+                if(!timeline) return;
+                timeline.innerHTML = '';
+                NetworkHub.socialPosts.forEach(post => {
+                    const block = document.createElement('div');
+                    block.className = 'soc-post';
+                    block.innerHTML = `<div class="soc-handle">${post.sender}</div><div style="word-break:break-all;">${post.content}</div>`;
+                    timeline.appendChild(block);
+                });
+            }
+
+            refreshSocialDMs() {
+                const stream = this.domElement.querySelector('.soc-dm-stream');
+                if(!stream) return;
+                stream.innerHTML = '';
+                if(!this.activeSocialUser) return;
+                
+                const dms = NetworkHub.socialDMs[this.activeSocialUser] || [];
+                dms.forEach(d => {
+                    const div = document.createElement('div');
+                    div.style.marginBottom = "4px";
+                    div.style.fontSize = "10px";
+                    div.innerHTML = `<span style="color:#ffcc00">${d.sender}:</span> ${d.text}`;
+                    stream.appendChild(div);
+                });
+                stream.scrollTop = stream.scrollHeight;
+            }
+
+            refreshSocialShorts() {
+                const container = this.domElement.querySelector('.soc-shorts-window');
+                if(!container) return;
+                container.innerHTML = '';
+                
+                NetworkHub.shortsFeed.forEach(s => {
+                    const el = document.createElement('div');
+                    el.className = 'short-video-container';
+                    el.innerHTML = `
+                        <div style="font-weight:bold; font-size:10px; color:#4caf50;">${s.creator}</div>
+                        <div class="short-graphic-frame"><pre style="font-size:8px; line-height:10px;">${s.text}</pre></div>
+                        <div class="short-meta">🔥 ${s.views} | [SCROLL DOWN FOR NEXT]</div>
+                    `;
+                    container.appendChild(el);
+                });
+            }
+
+            refreshSocialFeed() {
+                if(this.activeApp === 'netspace' && this.socialTab === 'timeline') {
+                    this.refreshSocialTimeline();
+                }
+            }
+        }
+
+        // Initialize Simulator Workspace core elements on execution load
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+        };
+    </script>
+</body>
+</html>

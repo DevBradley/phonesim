@@ -1,0 +1,1582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Device Workspace Simulation</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #121212;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #e0e0e0;
+            --text-muted: #777777;
+            --accent: #555555;
+            --accent-active: #aaaaaa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Diagnostics Control Panel */
+        #control-panel {
+            height: 180px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            z-index: 10;
+            padding: 10px;
+            gap: 15px;
+        }
+
+        .panel-section {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+
+        .panel-section h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 3px;
+        }
+
+        #sys-controls { width: 260px; }
+        #sim-factory { width: 300px; }
+        #network-logger { flex-grow: 1; }
+
+        .log-stream {
+            font-size: 11px;
+            color: #00ff00;
+            overflow-y: auto;
+            flex-grow: 1;
+            background: #050505;
+            padding: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+        }
+
+        .log-entry { margin-bottom: 3px; white-space: nowrap; }
+
+        button, select, input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 5px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        button:hover {
+            background: var(--border-color);
+            border-color: var(--text-muted);
+        }
+
+        input { cursor: text; }
+
+        /* Workspace Grid (Infinite Pan Canvas) */
+        #workspace-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #workspace-container:active { cursor: grabbing; }
+
+        #workspace-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5000px;
+            height: 5000px;
+            transform-origin: 0 0;
+        }
+
+        /* 3D Phone Chassis Styles */
+        .phone-wrapper {
+            position: absolute;
+            perspective: 1000px;
+            width: 260px;
+            height: 510px;
+            z-index: 5;
+        }
+
+        /* Model Scaling Layouts */
+        .phone-wrapper.m-5 { width: 230px; height: 460px; }
+        .phone-wrapper.m-5c { width: 230px; height: 460px; }
+        .phone-wrapper.m-6 { width: 245px; height: 495px; }
+        .phone-wrapper.m-7 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8p { width: 265px; height: 520px; }
+        .phone-wrapper.m-x { width: 265px; height: 535px; }
+        .phone-wrapper.m-11 { width: 270px; height: 540px; }
+        .phone-wrapper.m-12 { width: 270px; height: 542px; }
+        .phone-wrapper.m-13 { width: 270px; height: 542px; }
+        .phone-wrapper.m-p1 { width: 245px; height: 495px; }
+        .phone-wrapper.m-p3 { width: 250px; height: 510px; }
+        .phone-wrapper.m-p6 { width: 268px; height: 540px; }
+        .phone-wrapper.m-p8 { width: 268px; height: 540px; }
+        .phone-wrapper.m-pFold1 { width: 290px; height: 510px; }
+        .phone-wrapper.m-pFold2 { width: 285px; height: 525px; }
+        .phone-wrapper.m-p10 { width: 270px; height: 545px; }
+        .phone-wrapper.m-p10XL { width: 280px; height: 565px; }
+
+        .phone-card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+
+        .phone-wrapper.flipped .phone-card {
+            transform: rotateY(180deg);
+        }
+
+        .phone-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 28px;
+            border: 4px solid #333;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Front Face Architecture */
+        .phone-front {
+            background: #111111;
+            color: var(--text-main);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+
+        /* Cellular Antenna Band Engineering Lines */
+        .phone-back .antenna-line.horiz-top { top: 55px; left: 0; width: 100%; height: 2px; background: rgba(0,0,0,0.3); }
+        .phone-back .antenna-line.horiz-bottom { bottom: 55px; left: 0; width: 100%; height: 2px; background: rgba(0,0,0,0.3); }
+
+        /* Chassis Framework Variant Profiles */
+        .m-5 .phone-front { border-radius: 24px; }
+        .m-5c .phone-front { border-radius: 26px; }
+        .m-6 .phone-front { border-radius: 32px; }
+        
+        /* Edge to edge dynamic screens */
+        .m-x .phone-front, .m-11 .phone-front, .m-12 .phone-front, .m-13 .phone-front,
+        .m-p6 .phone-front, .m-p8 .phone-front, .m-pFold1 .phone-front, .m-pFold2 .phone-front, .m-p10 .phone-front, .m-p10XL .phone-front { 
+            border-radius: 40px; padding: 4px; 
+        }
+        .m-x .top-bezel, .m-11 .top-bezel, .m-12 .top-bezel, .m-13 .top-bezel,
+        .m-p6 .top-bezel, .m-p8 .top-bezel, .m-pFold1 .top-bezel, .m-pFold2 .top-bezel, .m-p10 .top-bezel, .m-p10XL .top-bezel { 
+            height: 32px; background: transparent !important; z-index: 15; 
+        }
+        
+        .m-x .notch, .m-11 .notch, .m-12 .notch, .m-13 .notch {
+            width: 110px; height: 22px; background: #000 !important; border-radius: 0 0 12px 12px;
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            display: flex; justify-content: center; align-items: center; gap: 8px;
+        }
+        .m-13 .notch { width: 84px; height: 22px; } /* Slimmer notch on 13 */
+
+        /* Alternative Ecosystem Camera Cuts */
+        .android-punchhole {
+            width: 10px; height: 10px; background: #000; border-radius: 50%;
+            position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 20;
+        }
+
+        .m-x .speaker-grille, .m-11 .speaker-grille, .m-12 .speaker-grille, .m-13 .speaker-grille { width: 35px; height: 3px; background: #222; }
+        .m-x .front-cam, .m-11 .front-cam, .m-12 .front-cam, .m-13 .front-cam { position: static; width: 6px; height: 6px; background: #111133; }
+        .m-x .bottom-bezel, .m-11 .bottom-bezel, .m-12 .bottom-bezel, .m-13 .bottom-bezel,
+        .m-p6 .bottom-bezel, .m-p8 .bottom-bezel, .m-pFold1 .bottom-bezel, .m-pFold2 .bottom-bezel, .m-p10 .bottom-bezel, .m-p10XL .bottom-bezel { display: none !important; }
+        .m-x .screen, .m-11 .screen, .m-12 .screen, .m-13 .screen,
+        .m-p6 .screen, .m-p8 .screen, .m-pFold1 .screen, .m-pFold2 .screen, .m-p10 .screen, .m-p10XL .screen { border-radius: 34px; border: none; }
+
+        /* System Bezels */
+        .top-bezel {
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .speaker-grille {
+            width: 45px;
+            height: 4px;
+            background: #222;
+            border-radius: 2px;
+        }
+        .front-cam {
+            width: 7px;
+            height: 7px;
+            background: #1a1a2e;
+            border-radius: 50%;
+            position: absolute;
+            left: 70px;
+        }
+
+        .bottom-bezel {
+            height: 45px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .home-button {
+            width: 34px;
+            height: 34px;
+            border: 1px solid #333;
+            border-radius: 50%;
+            cursor: pointer;
+            background: radial-gradient(circle, #151515 0%, #0a0a0a 100%);
+        }
+
+        /* Screen Architecture */
+        .screen {
+            flex-grow: 1;
+            background: #000;
+            border: 1px solid #222;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .status-bar {
+            height: 20px;
+            background: rgba(8, 8, 8, 0.75);
+            font-size: 9px;
+            padding: 0 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(17, 17, 17, 0.3);
+            color: var(--text-muted);
+            z-index: 12;
+        }
+        .m-x .status-bar, .m-11 .status-bar, .m-12 .status-bar, .m-13 .status-bar,
+        .m-p6 .status-bar, .m-p8 .status-bar, .m-pFold1 .status-bar, .m-pFold2 .status-bar, .m-p10 .status-bar, .m-p10XL .status-bar { 
+            height: 26px; padding-top: 6px; background: rgba(0, 0, 0, 0.75); 
+        }
+
+        .status-left, .status-right { display: flex; gap: 4px; align-items: center; }
+
+        .app-space {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* System App Containers */
+        .app-view {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            display: none;
+            flex-direction: column;
+            z-index: 5;
+            overflow: hidden;
+        }
+        .app-view.active { display: flex; }
+
+        .app-header {
+            height: 32px;
+            background: #0d0d0d;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .app-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+        }
+
+        /* Home Indicator Bar for Edge-to-Edge Layouts */
+        .home-bar {
+            display: none;
+            width: 110px; height: 4px; background: #888; border-radius: 2px;
+            position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+            z-index: 100; cursor: pointer;
+        }
+        .m-x .home-bar, .m-11 .home-bar, .m-12 .home-bar, .m-13 .home-bar,
+        .m-p6 .home-bar, .m-p8 .home-bar, .m-pFold1 .home-bar, .m-pFold2 .home-bar, .m-p10 .home-bar, .m-p10XL .home-bar { display: block; }
+
+        /* OS Launcher Matrix Styles */
+        .launcher-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .app-icon {
+            background: rgba(13, 13, 13, 0.75);
+            border: 1px solid var(--border-color);
+            height: 58px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 10px;
+            gap: 2px;
+        }
+        .app-icon:hover { background: rgba(21, 21, 21, 0.9); }
+        .app-icon span { font-size: 16px; }
+
+        /* Alternative Android-Like Launcher Design Override */
+        .android-ui .launcher-grid {
+            grid-template-columns: repeat(3, 1fr) !important;
+            gap: 8px !important;
+        }
+        .android-ui .app-icon {
+            border-radius: 50% !important;
+            height: 54px !important;
+            width: 54px !important;
+            margin: 0 auto;
+            background: rgba(30, 40, 30, 0.85) !important;
+            border: 1px solid #4caf50 !important;
+        }
+        .android-ui .app-header {
+            background: #141a14 !important;
+            border-bottom: 1px solid #2e3b2e !important;
+            font-family: sans-serif !important;
+        }
+
+        /* Phone App Elements */
+        .dialer-output {
+            background: #050505;
+            border: 1px solid #1a1a1a;
+            padding: 4px;
+            text-align: right;
+            font-size: 14px;
+            margin-bottom: 6px;
+            min-height: 24px;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+        .dialer-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .dial-btn {
+            background: #0c0c0c;
+            border: 1px solid #1e1e1e;
+            padding: 6px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .dial-btn:hover { background: #1a1a1a; }
+        .call-actions { display: flex; gap: 5px; }
+
+        .inc-call-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+        .inc-call-overlay.active { display: flex; }
+
+        /* Messaging Subsystem & Theme Packs */
+        .msg-threads { display: flex; flex-direction: column; gap: 4px; }
+        .thread-row {
+            padding: 6px; background: #090909; border: 1px solid #151515; cursor: pointer;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .contact-monogram {
+            width: 22px; height: 22px; background: #333; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: bold;
+        }
+        .chat-stream { 
+            flex-grow: 1; overflow-y: auto; background: #030303; border: 1px solid #111; 
+            padding: 4px; margin-bottom: 4px; display: flex; flex-direction: column;
+            background-size: cover; background-position: center;
+        }
+        .chat-bubble { max-width: 85%; padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; word-break: break-all; font-size: 11px;}
+        
+        /* Bubble Matrix Color Logic Rules */
+        .chat-bubble.sent { background: #222; align-self: flex-end; }
+        .chat-bubble.rcvd.blue-bubble { background: #0076ff; color: #fff; align-self: flex-start; }
+        .chat-bubble.rcvd.lime-bubble { background: #a3e52c; color: #000; align-self: flex-start; font-weight: bold; }
+
+        /* Social Network UI Modifications */
+        .soc-acc-bar {
+            display: flex; gap: 3px; background: #0a0a0a; padding: 4px; border-bottom: 1px solid #1a1a1a; overflow-x: auto; flex-shrink: 0;
+        }
+        .mini-avatar {
+            font-size: 9px; padding: 2px 4px; background: #151515; border: 1px solid #333; cursor: pointer; white-space: nowrap;
+        }
+        .mini-avatar.active { background: #333; color: #fff; }
+        .soc-post {
+            background: #0a0a0a; border: 1px solid #1a1a1a; padding: 6px; margin-bottom: 6px; border-radius: 2px;
+        }
+        .soc-handle { color: var(--text-muted); font-size: 10px; margin-bottom: 2px; }
+
+        /* Short-Form Feed & Messaging Addons */
+        .soc-nav-tabs { display: flex; border-bottom: 1px solid #222; background: #111; }
+        .soc-tab-btn { flex: 1; text-align: center; padding: 6px; font-size: 9px; cursor: pointer; }
+        .soc-tab-btn.active { background: #222; font-weight: bold; }
+        .shortform-container { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; height: 100%; padding: 4px; scroll-snap-type: y mandatory; }
+        .short-clip { 
+            height: 220px; background: #111; border: 1px solid #333; position: relative; 
+            border-radius: 6px; display: flex; flex-direction: column; justify-content: flex-end; 
+            padding: 8px; scroll-snap-align: start; flex-shrink: 0;
+            background-size: cover; background-position: center;
+        }
+        .short-title { font-size: 10px; font-weight: bold; margin-bottom: 2px; text-shadow: 1px 1px 2px #000; }
+        .short-metrics { font-size: 9px; color: #ffcc00; }
+
+        /* Physical Back Face Architecture */
+        .phone-back {
+            transform: rotateY(180deg);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 28px;
+            position: relative;
+        }
+        
+        /* Shell Finishes / Colors Rules */
+        .phone-card[data-color="matte-black"] .phone-back { background: #141414; color: #888; border-color: #222; }
+        .phone-card[data-color="industrial-gray"] .phone-back { background: #2e2e2e; color: #ccc; border-color: #444; }
+        .phone-card[data-color="monochrome-white"] .phone-back { background: #dcdcdc; color: #222; border-color: #aaaaaa; }
+        .phone-card[data-color="rose-gold"] .phone-back { background: #fad6d6; color: #444; border-color: #e0b2b2; }
+        .phone-card[data-color="rose"] .phone-back { background: #ffb6c1; color: #444; border-color: #e8a2ad; }
+        
+        /* Model 5c Polycarbonate */
+        .phone-card[data-color="neon-blue"] .phone-back { background: #00a3e0; color: #fff; border-color: #0082b3; }
+        .phone-card[data-color="lime-green"] .phone-back { background: #4cd964; color: #000; border-color: #3cb252; }
+        .phone-card[data-color="coral-pink"] .phone-back { background: #ff4f6a; color: #fff; border-color: #e03b54; }
+        .phone-card[data-color="canary-yellow"] .phone-back { background: #ffcc00; color: #000; border-color: #e6b800; }
+
+        /* Model 6 / 11 Architectural Paint Specs */
+        .phone-card[data-color="space-gray"] .phone-back { background: #555559; color: #eee; border-color: #3a3a3c; }
+        .phone-card[data-color="gold"] .phone-back { background: #f9e4b7; color: #333; border-color: #e5cb93; }
+        .phone-card[data-color="silver"] .phone-back { background: #e3e4e6; color: #111; border-color: #b5b6b8; }
+        .phone-card[data-color="purple"] .phone-back { background: #d1cddb; color: #222; border-color: #b7b2c5; }
+        .phone-card[data-color="mint-green"] .phone-back { background: #addece; color: #111; border-color: #90c2b2; }
+        .phone-card[data-color="product-red"] .phone-back { background: #d92632; color: #fff; border-color: #b51620; }
+
+        /* Production Hardware Form Colors (12 & 13) */
+        .phone-card[data-color="pacific-blue"] .phone-back { background: #2b4353; color: #eee; border-color: #1e303c; }
+        .phone-card[data-color="sierra-blue"] .phone-back { background: #9bbcd2; color: #222; border-color: #799cb3; }
+        .phone-card[data-color="midnight"] .phone-back { background: #1a2228; color: #aaa; border-color: #101519; }
+        .phone-card[data-color="starlight"] .phone-back { background: #faf7f2; color: #222; border-color: #e3ded5; }
+        .phone-card[data-color="pink-edition"] .phone-back { background: #fae0e4; color: #333; border-color: #e8c5cb; }
+
+        /* Custom Pixelate Brand Color Matrix Specs */
+        .phone-card[data-color="quite-black"] .phone-back { background: #222224; color: #fff; border-color: #111; }
+        .phone-card[data-color="very-silver"] .phone-back { background: #e1e2e5; color: #222; border-color: #ccc; }
+        .phone-card[data-color="clearly-white"] .phone-back { background: #fdfdfd; color: #111; border-color: #ddd; }
+        .phone-card[data-color="not-pink"] .phone-back { background: #f7ded6; color: #333; border-color: #e5c3b8; }
+        .phone-card[data-color="stormy-black"] .phone-back { background: #35363a; color: #eee; border-color: #202124; }
+        .phone-card[data-color="sorta-sunny"] .phone-back { background: #fbf0cf; color: #333; border-color: #ebdfbd; }
+        .phone-card[data-color="hazel"] .phone-back { background: #4e5652; color: #fff; border-color: #3b423f; }
+        .phone-card[data-color="porcelain"] .phone-back { background: #f3efe6; color: #222; border-color: #ded9cd; }
+        .phone-card[data-color="obsidian"] .phone-back { background: #1c1c1e; color: #eee; border-color: #0b0b0c; }
+        .phone-card[data-color="rose-quartz"] .phone-back { background: #f6d1d8; color: #222; border-color: #e0b3bc; }
+
+        /* Front Bezels Painting Rules */
+        .phone-card[data-front-theme="black"] .phone-front { background: #0c0c0c; border-color: inherit; }
+        .phone-card[data-front-theme="black"] .top-bezel, .phone-card[data-front-theme="black"] .bottom-bezel { background: #0c0c0c; color: #fff; }
+        .phone-card[data-front-theme="white"] .phone-front { background: #eaeaea; border-color: inherit; color: #222; }
+        .phone-card[data-front-theme="white"] .top-bezel, .phone-card[data-front-theme="white"] .bottom-bezel { background: #eaeaea; color: #222; }
+        .phone-card[data-front-theme="white"] .status-bar { background: rgba(220, 220, 220, 0.85); color: #333; }
+
+        /* Hardware Interactive Lateral Side Tray */
+        .hardware-sim-tray-bracket {
+            position: absolute;
+            right: -12px;
+            top: 160px;
+            width: 12px;
+            height: 48px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            z-index: 40;
+            padding: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: width 0.2s ease;
+        }
+        .hardware-sim-tray-bracket.expanded {
+            width: 175px;
+            right: -175px;
+            height: auto;
+            min-height: 55px;
+            flex-direction: column;
+            background: #111;
+            border: 2px solid #ffcc00;
+            border-radius: 4px;
+            padding: 6px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+        }
+        .side-tray-label {
+            font-size: 8px;
+            color: #ffcc00;
+            font-weight: bold;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            display: none;
+        }
+        .hardware-sim-tray-bracket.expanded .side-tray-label { display: block; }
+        .side-sim-select {
+            display: none;
+            width: 100%;
+            font-size: 10px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 2px;
+            margin-bottom: 4px;
+        }
+        .hardware-sim-tray-bracket.expanded .side-sim-select { display: block; }
+        .side-tray-icon { font-size: 10px; color: #aaa; }
+        .hardware-sim-tray-bracket.expanded .side-tray-icon { display: none; }
+
+        /* Repositioned Camera Housings (Top Left Offset Architecture) */
+        .cam-housing {
+            background: #0a0a0a;
+            border: 2px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 15px;
+            left: 15px;
+        }
+        /* Legacy Single Camera Profiles */
+        .m-5 .cam-housing, .m-5c .cam-housing, .m-6 .cam-housing, .m-7 .cam-housing, .m-8 .cam-housing, .m-p1 .cam-housing, .m-p3 .cam-housing {
+            width: 26px; height: 26px; border-radius: 50%;
+        }
+        /* Dual Camera Horizontal Profiles */
+        .m-8p .cam-housing {
+            width: 44px; height: 24px; border-radius: 12px; gap: 4px; padding: 0 4px;
+        }
+        /* Dual Camera Vertical Complex Profiles */
+        .m-x .cam-housing, .m-12 .cam-housing {
+            width: 24px; height: 44px; border-radius: 12px; gap: 4px; padding: 4px 0; flex-direction: column;
+        }
+        /* Diagonal Lens Complex Array Setup (Model 13) */
+        .m-13 .cam-housing {
+            width: 44px; height: 44px; border-radius: 12px; background: rgba(20,20,20,0.8); position: absolute;
+        }
+        .m-13 .cam-housing .lens:nth-child(1) { position: absolute; top: 6px; left: 6px; }
+        .m-13 .cam-housing .lens:nth-child(2) { position: absolute; bottom: 6px; right: 6px; }
+
+        /* Horizontal Custom Camera Visor Layout Profile (p6, p8, p10) */
+        .m-p6 .cam-housing, .m-p8 .cam-housing, .m-p10 .cam-housing, .m-p10XL .cam-housing {
+            width: 100%; height: 28px; top: 40px; left: 0; border-radius: 0; border-left: none; border-right: none;
+            background: #222; display: flex; justify-content: center; gap: 12px;
+        }
+
+        /* Foldable Camera Island Module Matrix Profile */
+        .m-pFold1 .cam-housing, .m-pFold2 .cam-housing {
+            width: 52px; height: 34px; border-radius: 16px; display: flex; gap: 4px;
+        }
+
+        /* Square Multi-Lens Complex Array (Model 11) */
+        .m-11 .cam-housing {
+            width: 48px; height: 48px; border-radius: 14px; gap: 4px; padding: 4px; display: grid; grid-template-columns: repeat(2, 1fr); background: rgba(20,20,20,0.8);
+        }
+        .lens {
+            width: 10px; height: 10px; background: #05101a; border-radius: 50%; border: 1px solid #111; margin: auto;
+        }
+        .hardware-info {
+            text-align: center; margin-top: 60px; font-size: 9px; text-transform: uppercase; line-height: 14px; color: inherit; opacity: 0.7; width: 100%;
+        }
+        /* Window Overlay Utilitarian Elements */
+        .utility-row { display: flex; gap: 4px; margin-bottom: 4px; flex-shrink: 0; }
+        .utility-row input { flex-grow: 1; }
+        
+        /* Floating HUD metrics on devices */
+        .spatial-hud {
+            position: absolute; bottom: -35px; left: 0; width: 100%; text-align: center; font-size: 10px; color: var(--text-muted); pointer-events: none; line-height: 14px;
+        }
+        .flip-tab {
+            position: absolute; top: 10px; right: 10px; z-index: 100; background: rgba(0,0,0,0.8); border: 1px solid #444; padding: 2px 6px; font-size: 8px; border-radius: 3px; color: #aaa; cursor: pointer;
+        }
+        .flip-tab:hover { color: #fff; background: #000; }
+
+        /* Router Elements Matrix Profiles */
+        .router-wrapper {
+            position: absolute; width: 120px; height: 90px; background: #181818; border: 2px solid #333; border-radius: 6px; padding: 8px; font-size: 10px; box-shadow: 0 6px 15px rgba(0,0,0,0.8); cursor: move; z-index: 4;
+        }
+        .router-antenna { position: absolute; top: -15px; width: 3px; height: 15px; background: #444; }
+        .router-antenna.a1 { left: 20px; }
+        .router-antenna.a2 { right: 20px; }
+        .router-led { width: 5px; height: 5px; background: #00ff00; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+        /* Drawing Box Marquee Infrastructure */
+        #selection-marquee { position: absolute; border: 1px dashed #ffcc00; background: rgba(255, 204, 0, 0.15); pointer-events: none; display: none; z-index: 1000; }
+        .selected-group-node { box-shadow: 0 0 0 2px #ffcc00 !important; }
+    </style>
+</head>
+<body>
+    <div id="control-panel">
+        <div class="panel-section" id="sys-controls">
+            <h3>System Controls</h3>
+            <div style="display: flex; flex-direction: column; gap: 4px; overflow-y:auto; flex-grow:1;">
+                <div>
+                    <button id="btn-clear-logs" onclick="Logger.clear()">Clear Logs</button>
+                    <button id="btn-reset-pan" onclick="Workspace.resetPan()">Reset Pan</button>
+                </div>
+                <div style="margin-top: 4px;">
+                    <span style="font-size: 10px; color:#777;">Active Links Grid Engine running</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section" id="sim-factory">
+            <h3>Simulation Device Factory</h3>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
+                <select id="fact-model" onchange="Workspace.updateFactoryColors()">
+                    <option value="5">Model 5</option>
+                    <option value="5c">Model 5c</option>
+                    <option value="6">Model 6</option>
+                    <option value="7">Model 7</option>
+                    <option value="8">Model 8</option>
+                    <option value="8p">Model 8 Plus</option>
+                    <option value="x">Model X</option>
+                    <option value="11">Model 11</option>
+                    <option value="12">Model 12</option>
+                    <option value="13">Model 13</option>
+                    <option value="p1">Pixelate 1</option>
+                    <option value="p3">Pixelate 3</option>
+                    <option value="p6">Pixelate 6</option>
+                    <option value="p8">Pixelate 8</option>
+                    <option value="pFold1">Pixelate Fold 1</option>
+                    <option value="pFold2">Pixelate Fold 2</option>
+                    <option value="p10">Pixelate 10</option>
+                    <option value="p10XL">Pixelate 10 XL</option>
+                </select>
+                <select id="fact-color">
+                    </select>
+                <select id="fact-front">
+                    <option value="black">Black Bezel Theme</option>
+                    <option value="white">White Bezel Theme</option>
+                </select>
+                <button onclick="Workspace.spawnPhone()">Spawn Node</button>
+                <button onclick="Workspace.spawnRouter()" style="grid-column: span 2;">Spawn Base Router Station</button>
+            </div>
+        </div>
+
+        <div class="panel-section" id="network-logger">
+            <h3>Core Live Network Signal Packet Backlog Stream</h3>
+            <div class="log-stream" id="log-stream-target"></div>
+        </div>
+    </div>
+
+    <div id="workspace-container">
+        <div id="workspace-canvas"></div>
+        <div id="selection-marquee"></div>
+    </div>
+
+    <script>
+        // Global Simulation Vector Background Library
+        const Wallpapers = {
+            matrix: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="%23050505"/><path d="M10 0 v100 M30 0 v100 M50 0 v100 M70 0 v100 M90 0 v100" stroke="%23113311" stroke-width="0.5"/><path d="M0 20 h100 M0 40 h100 M0 60 h100 M0 80 h100" stroke="%23113311" stroke-width="0.5"/></svg>`,
+            neonCircuit: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="100%" height="100%" fill="%230d0914"/><circle cx="20" cy="20" r="3" fill="%23ff0055"/><circle cx="80" cy="60" r="4" fill="%2300ffcc"/><path d="M20 20 h40 v40 h20" stroke="%23ff0055" fill="none" stroke-width="1"/><path d="M80 60 v40 h-50" stroke="%2300ffcc" fill="none" stroke-width="1"/></svg>`,
+            industrialMesh: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><rect width="16" height="16" fill="%231a1a1a"/><circle cx="8" cy="8" r="1.5" fill="%232a2a2a"/></svg>`,
+            pixelateDefault: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="100%" height="100%" fill="%232c3e50"/><circle cx="100" cy="100" r="80" fill="%23e74c3c" opacity="0.3"/><circle cx="140" cy="60" r="50" fill="%23f1c40f" opacity="0.2"/></svg>`,
+            classicDevice: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><rect width="100%" height="100%" fill="%23111"/><path d="M0 0 L200 200 M200 0 L0 200" stroke="%23222" stroke-width="2"/></svg>`
+        };
+
+        // Network Signal Backlog Management Subsystem Engine
+        const Logger = {
+            target: null,
+            init() {
+                this.target = document.getElementById('log-stream-target');
+                this.log("Network Hub initialization finalized successfully.");
+            },
+            log(msg) {
+                if(!this.target) return;
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+                this.target.appendChild(entry);
+                this.target.scrollTop = this.target.scrollHeight;
+            },
+            clear() {
+                if(this.target) this.target.innerHTML = '';
+            }
+        };
+
+        // Network & Communication Core Hub Database Configuration Profiles
+        const NetworkHub = {
+            devices: new Map(),
+            routers: new Map(),
+            socialPosts: [],
+            socialMessages: [], // Shared social chat database
+            shortClips: [
+                { id: 1, title: "Custom Kernel Initialization compiled in 12ms #dev", views: "1.2M views", bg: "#1e1e24" },
+                { id: 2, title: "Ricing terminals with high efficiency themes", views: "840K views", bg: "#2a1b3d" },
+                { id: 3, title: "Destroying memory leaks like a absolute boss", views: "2.4M views", bg: "#0b3c5d" }
+            ],
+            init() {
+                // Pre-populate core communication global relays
+                this.socialPosts.push({ sender: "@SysAdmin", content: "Global data link grids running cleanly." });
+                this.socialPosts.push({ sender: "@BradMart", content: "Arch containers synchronized across endpoints." });
+            },
+            registerDevice(id, instance) { this.devices.set(id, instance); },
+            unregisterDevice(id) { this.devices.delete(id); },
+            registerRouter(id, instance) { this.routers.set(id, instance); },
+            unregisterRouter(id) { this.routers.delete(id); },
+            broadcastPost(sender, content) {
+                this.socialPosts.push({ sender, content });
+                this.devices.forEach(d => d.refreshSocialFeed());
+            },
+            sendSocialMessage(sender, recipient, content) {
+                this.socialMessages.push({ sender, recipient, content, timestamp: Date.now() });
+                this.devices.forEach(d => {
+                    if (d.activeSocialUser === recipient || d.activeSocialUser === sender) {
+                        d.refreshSocialMessages();
+                    }
+                });
+            }
+        };
+
+        // Interactive Pan Canvas Framework Space Engineering
+        const Workspace = {
+            canvas: null,
+            container: null,
+            panX: 100,
+            panY: 50,
+            isDragging: false,
+            startX: 0,
+            startY: 0,
+            nodeIdCounter: 100,
+            selectedNodes: new Set(),
+            isSelecting: false,
+            selStartX: 0,
+            selStartY: 0,
+
+            init() {
+                this.canvas = document.getElementById('workspace-canvas');
+                this.container = document.getElementById('workspace-container');
+                this.updateCanvasTransform();
+                this.updateFactoryColors();
+
+                this.container.addEventListener('mousedown', (e) => this.onMouseDown(e));
+                window.addEventListener('mousemove', (e) => this.onMouseMove(e));
+                window.addEventListener('mouseup', (e) => this.onMouseUp(e));
+            },
+            updateCanvasTransform() {
+                this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px)`;
+            },
+            resetPan() {
+                this.panX = 100; this.panY = 50; this.updateCanvasTransform();
+                Logger.log("Workspace pan coordinates centered to home grid standard.");
+            },
+            updateFactoryColors() {
+                const model = document.getElementById('fact-model').value;
+                const colorSel = document.getElementById('fact-color');
+                colorSel.innerHTML = '';
+
+                let variants = [];
+                if (['5'].includes(model)) variants = ['matte-black', 'industrial-gray', 'monochrome-white', 'rose-gold'];
+                else if (['5c'].includes(model)) variants = ['neon-blue', 'lime-green', 'coral-pink', 'canary-yellow'];
+                else if (['6', '7', '8', '8p', 'x', '11'].includes(model)) variants = ['space-gray', 'gold', 'silver', 'purple', 'mint-green', 'product-red'];
+                else if (['12', '13'].includes(model)) variants = ['pacific-blue', 'sierra-blue', 'midnight', 'starlight', 'pink-edition', 'product-red'];
+                else if (['p1', 'p3'].includes(model)) variants = ['quite-black', 'very-silver', 'clearly-white', 'not-pink'];
+                else if (['p6', 'p8'].includes(model)) variants = ['stormy-black', 'sorta-sunny', 'hazel'];
+                else if (['pFold1', 'pFold2', 'p10', 'p10XL'].includes(model)) variants = ['porcelain', 'obsidian', 'rose-quartz'];
+
+                variants.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v; opt.innerText = v.replace('-', ' ').toUpperCase();
+                    colorSel.appendChild(opt);
+                });
+            },
+            spawnPhone() {
+                const m = document.getElementById('fact-model').value;
+                const c = document.getElementById('fact-color').value;
+                const f = document.getElementById('fact-front').value;
+                this.nodeIdCounter++;
+                
+                const wrapper = document.createElement('div');
+                wrapper.className = `phone-wrapper m-${m}`;
+                wrapper.id = `node-${this.nodeIdCounter}`;
+                // Offset deployment coordinates to prevent absolute overlay stacking
+                const spawnOffset = (this.nodeIdCounter % 5) * 25;
+                wrapper.style.left = `${300 + spawnOffset}px`;
+                wrapper.style.top = `${150 + spawnOffset}px`;
+
+                this.canvas.appendChild(wrapper);
+                const instance = new PhoneDevice(wrapper, this.nodeIdCounter, m, c, f);
+                NetworkHub.registerDevice(wrapper.id, instance);
+                Logger.log(`Spawned Phone Node configuration: ${m.toUpperCase()} [Color: ${c}]`);
+            },
+            spawnRouter() {
+                this.nodeIdCounter++;
+                const r = document.createElement('div');
+                r.className = 'router-wrapper';
+                r.id = `node-${this.nodeIdCounter}`;
+                r.style.left = '450px'; r.style.top = '100px';
+                r.innerHTML = `
+                    <div class="router-antenna a1"></div>
+                    <div class="router-antenna a2"></div>
+                    <div style="font-weight:bold; margin-bottom:4px; color:#ffcc00;"><span class="router-led"></span>RT-${this.nodeIdCounter}</div>
+                    <div style="color:#666; font-size:8px;">802.11ax GRID RELAY</div>
+                    <div style="margin-top:6px;"><button onclick="Workspace.destroyNode('${r.id}')" style="padding:1px 4px; font-size:8px;">HALT</button></div>
+                `;
+                this.canvas.appendChild(r);
+                this.bindRouterDrag(r);
+                NetworkHub.registerRouter(r.id, r);
+                Logger.log(`Deployed Base Grid Router Terminal Station RT-${this.nodeIdCounter}`);
+            },
+            destroyNode(id) {
+                const el = document.getElementById(id);
+                if(el) {
+                    el.remove();
+                    NetworkHub.unregisterDevice(id);
+                    NetworkHub.unregisterRouter(id);
+                    Logger.log(`Node infrastructure ${id} terminated.`);
+                }
+            },
+            bindRouterDrag(el) {
+                let dX = 0, dY = 0;
+                el.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    dX = e.clientX - el.offsetLeft;
+                    dY = e.clientY - el.offsetTop;
+                    const moveSub = (ev) => {
+                        el.style.left = `${ev.clientX - dX}px`;
+                        el.style.top = `${ev.clientY - dY}px`;
+                    };
+                    const upSub = () => {
+                        window.removeEventListener('mousemove', moveSub);
+                        window.removeEventListener('mouseup', upSub);
+                    };
+                    window.addEventListener('mousemove', moveSub);
+                    window.addEventListener('mouseup', upSub);
+                });
+            },
+            onMouseDown(e) {
+                if (e.target.closest('.phone-wrapper') || e.target.closest('.router-wrapper') || e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
+                
+                if (e.shiftKey) {
+                    this.isSelecting = true;
+                    const rect = this.container.getBoundingClientRect();
+                    this.selStartX = e.clientX - rect.left - this.panX;
+                    this.selStartY = e.clientY - rect.top - this.panY;
+                    const marquee = document.getElementById('selection-marquee');
+                    marquee.style.left = `${this.selStartX + this.panX}px`;
+                    marquee.style.top = `${this.selStartY + this.panY}px`;
+                    marquee.style.width = '0px';
+                    marquee.style.height = '0px';
+                    marquee.style.display = 'block';
+                } else {
+                    this.isDragging = true;
+                    this.startX = e.clientX - this.panX;
+                    this.startY = e.clientY - this.panY;
+                }
+            },
+            onMouseMove(e) {
+                if (this.isDragging) {
+                    this.panX = e.clientX - this.startX;
+                    this.panY = e.clientY - this.startY;
+                    this.updateCanvasTransform();
+                } else if (this.isSelecting) {
+                    const rect = this.container.getBoundingClientRect();
+                    const curX = e.clientX - rect.left - this.panX;
+                    const curY = e.clientY - rect.top - this.panY;
+                    
+                    const x1 = Math.min(this.selStartX, curX);
+                    const x2 = Math.max(this.selStartX, curX);
+                    const y1 = Math.min(this.selStartY, curY);
+                    const y2 = Math.max(this.selStartY, curY);
+
+                    const marquee = document.getElementById('selection-marquee');
+                    marquee.style.left = `${x1 + this.panX}px`;
+                    marquee.style.top = `${y1 + this.panY}px`;
+                    marquee.style.width = `${x2 - x1}px`;
+                    marquee.style.height = `${y2 - y1}px`;
+
+                    // Evaluate overlaps
+                    document.querySelectorAll('.phone-wrapper, .router-wrapper').forEach(node => {
+                        const nL = parseInt(node.style.left) || 0;
+                        const nT = parseInt(node.style.top) || 0;
+                        if(nL >= x1 && nL <= x2 && nT >= y1 && nT <= y2) {
+                            node.classList.add('selected-group-node');
+                            this.selectedNodes.add(node.id);
+                        } else {
+                            node.classList.remove('selected-group-node');
+                            this.selectedNodes.delete(node.id);
+                        }
+                    });
+                }
+            },
+            onMouseUp() {
+                this.isDragging = false;
+                if (this.isSelecting) {
+                    this.isSelecting = false;
+                    document.getElementById('selection-marquee').style.display = 'none';
+                    if(this.selectedNodes.size > 0) {
+                        Logger.log(`Batch selection locked onto ${this.selectedNodes.size} cluster nodes.`);
+                    }
+                }
+            }
+        };
+
+        // Object Oriented Hardware Device Subsystem Framework Architecture
+        class PhoneDevice {
+            constructor(element, numericId, model, color, frontTheme) {
+                this.domElement = element;
+                this.id = numericId;
+                this.model = model;
+                this.color = color;
+                this.frontTheme = frontTheme;
+                this.simTrayOperator = 'unlinked';
+                this.currentWallpaper = 'classicDevice';
+                this.chatBackground = 'transparent';
+
+                // Check environment ecosystem logic
+                this.isAndroidLike = ['p1', 'p3', 'p6', 'p8', 'pFold1', 'pFold2', 'p10', 'p10XL'].includes(model);
+                if (this.isAndroidLike) {
+                    this.currentWallpaper = 'pixelateDefault';
+                }
+
+                // Dynamic Contact Directory Structure Card lists
+                this.contacts = [
+                    { name: "Emergency Broadcast", monogram: "SOS", number: "911" },
+                    { name: "Grid Terminal Admin", monogram: "ADM", number: "100" }
+                ];
+
+                this.activeSocialUser = null;
+                this.currentChatRecipient = null;
+
+                this.buildFrameStructure();
+                this.bindDragLogic();
+                this.renderLauncherGrid();
+            }
+
+            buildFrameStructure() {
+                this.domElement.innerHTML = `
+                    <div class="phone-card" data-color="${this.color}" data-front-theme="${this.frontTheme}">
+                        <div class="flip-tab" onclick="event.stopPropagation(); this.closest('.phone-wrapper').classList.toggle('flipped')">FLIP</div>
+                        
+                        <div class="phone-face phone-front ${this.isAndroidLike ? 'android-ui' : ''}">
+                            <div class="top-bezel">
+                                <div class="notch">
+                                    <div class="speaker-grille"></div>
+                                    <div class="front-cam"></div>
+                                </div>
+                                ${this.isAndroidLike ? '<div class="android-punchhole"></div>' : ''}
+                            </div>
+
+                            <div class="screen" style="background-image: url('${Wallpapers[this.currentWallpaper]}')">
+                                <div class="status-bar">
+                                    <div class="status-left" id="clock-${this.id}">12:00</div>
+                                    <div class="status-right">
+                                        <span id="sig-${this.id}">[G]</span>
+                                        <span>88%</span>
+                                    </div>
+                                </div>
+
+                                <div class="app-space" id="app-space-${this.id}">
+                                    </div>
+
+                                <div class="home-bar" onclick="event.stopPropagation(); this.closest('.phone-wrapper').PhoneInstance.closeActiveApp()"></div>
+                            </div>
+
+                            <div class="bottom-bezel">
+                                <div class="home-button" onclick="event.stopPropagation(); this.closest('.phone-wrapper').PhoneInstance.closeActiveApp()"></div>
+                            </div>
+                            
+                            <div class="spatial-hud">
+                                NODE-${this.id}<br>
+                                <span id="hud-status-${this.id}">STATIONARY LAYER</span>
+                            </div>
+                        </div>
+
+                        <div class="phone-face phone-back">
+                            <div class="antenna-line horiz-top"></div>
+                            <div class="cam-housing">
+                                <div class="lens"></div>
+                                ${['8p', 'x', '11', '12', '13', 'p6', 'p8', 'pFold1', 'pFold2', 'p10', 'p10XL'].includes(this.model) ? '<div class="lens"></div>' : ''}
+                                ${['11', 'p10', 'p10XL'].includes(this.model) ? '<div class="lens"></div>' : ''}
+                            </div>
+                            <div class="hardware-info">
+                                DESIGNED BY GEMINI CORE LABS<br>
+                                MODEL: M-${this.model.toUpperCase()}<br>
+                                FINISH: ${this.color.replace('-', ' ').toUpperCase()}<br>
+                                TR-NET REV-X
+                            </div>
+                            <div class="antenna-line horiz-bottom"></div>
+                        </div>
+
+                        <div class="hardware-sim-tray-bracket" onclick="event.stopPropagation(); this.classList.toggle('expanded')">
+                            <div class="side-tray-icon">⚙</div>
+                            <div class="side-tray-label">SIM HW RELAY</div>
+                            <select class="side-sim-select" onclick="event.stopPropagation()" onchange="this.closest('.phone-wrapper').PhoneInstance.mountSimRelay(this.value)">
+                                <option value="unlinked">UNLINKED TRAY</option>
+                                <option value="net-alpha">GRID-ALPHA LINK</option>
+                                <option value="net-bravo">GRID-BRAVO LINK</option>
+                                <option value="isolated">ISOLATED LOOP</option>
+                            </select>
+                            <div style="font-size:7px; color:#ffcc00; margin-top:2px;" class="side-tray-label" id="sim-hud-${this.id}">OFFLINE</div>
+                        </div>
+                    </div>
+                `;
+                this.domElement.PhoneInstance = this;
+                this.startClockEngine();
+            }
+
+            startClockEngine() {
+                const target = document.getElementById(`clock-${this.id}`);
+                setInterval(() => {
+                    const d = new Date();
+                    if(target) target.innerText = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+                }, 1000);
+            }
+
+            mountSimRelay(val) {
+                this.simTrayOperator = val;
+                const hud = document.getElementById(`sim-hud-${this.id}`);
+                const sig = document.getElementById(`sig-${this.id}`);
+                if(hud) hud.innerText = val.toUpperCase();
+                if(sig) sig.innerText = val === 'unlinked' ? '[X]' : '[G]';
+                Logger.log(`Device NODE-${this.id} reconfigured structural SIM transceiver link state to: ${val}`);
+            }
+
+            bindDragLogic() {
+                let dX = 0, dY = 0;
+                this.domElement.addEventListener('mousedown', (e) => {
+                    if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input') || e.target.closest('.flip-tab') || e.target.closest('.hardware-sim-tray-bracket')) return;
+                    e.stopPropagation();
+                    
+                    dX = e.clientX - this.domElement.offsetLeft;
+                    dY = e.clientY - this.domElement.offsetTop;
+                    
+                    const moveSub = (ev) => {
+                        this.domElement.style.left = `${ev.clientX - dX}px`;
+                        this.domElement.style.top = `${ev.clientY - dY}px`;
+                        document.getElementById(`hud-status-${this.id}`).innerText = `PAN X:${this.domElement.style.left} Y:${this.domElement.style.top}`;
+                    };
+                    const upSub = () => {
+                        window.removeEventListener('mousemove', moveSub);
+                        window.removeEventListener('mouseup', upSub);
+                    };
+                    window.addEventListener('mousemove', moveSub);
+                    window.addEventListener('mouseup', upSub);
+                });
+            }
+
+            getAppSpace() { return document.getElementById(`app-space-${this.id}`); }
+
+            closeActiveApp() {
+                this.renderLauncherGrid();
+            }
+
+            renderLauncherGrid() {
+                const space = this.getAppSpace();
+                if(!space) return;
+                space.innerHTML = `
+                    <div class="launcher-grid">
+                        <div class="app-icon" onclick="this.closest('.phone-wrapper').PhoneInstance.openPhoneApp()"><span>📞</span>Phone</div>
+                        <div class="app-icon" onclick="this.closest('.phone-wrapper').PhoneInstance.openMessagesApp()"><span>💬</span>Messages</div>
+                        <div class="app-icon" onclick="this.closest('.phone-wrapper').PhoneInstance.openSocialApp()"><span>🌐</span>SocialGrid</div>
+                        <div class="app-icon" onclick="this.closest('.phone-wrapper').PhoneInstance.openSettingsApp()"><span>⚙️</span>Settings</div>
+                    </div>
+                `;
+            }
+
+            // --- PHONE & CONTACTS SUBSYSTEM APPLICATION VIEW ---
+            openPhoneApp() {
+                const space = this.getAppSpace();
+                space.innerHTML = `
+                    <div class="app-view active">
+                        <div class="app-header"><div>CELLULAR PHONE</div><button onclick="this.closest('.phone-wrapper').PhoneInstance.closeActiveApp()">X</button></div>
+                        <div class="app-body">
+                            <div class="dialer-output" id="dial-out-${this.id}"></div>
+                            <div class="dialer-pad">
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '1'">1</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '2'">2</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '3'">3</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '4'">4</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '5'">5</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '6'">6</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '7'">7</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '8'">8</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '9'">9</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '*'">*</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '0'">0</div>
+                                <div class="dial-btn" onclick="document.getElementById('dial-out-${this.id}').innerText += '#'">#</div>
+                            </div>
+                            <div class="call-actions">
+                                <button style="background:#1b331b; flex-grow:1;" onclick="this.closest('.phone-wrapper').PhoneInstance.triggerCallInit()">CALL</button>
+                                <button style="background:#331b1b;" onclick="document.getElementById('dial-out-${this.id}').innerText = ''">CLR</button>
+                            </div>
+                            
+                            <div style="margin-top:10px; border-top:1px solid #222; padding-top:6px;">
+                                <div style="font-weight:bold; font-size:9px; margin-bottom:4px; color:#aaa;">ADDRESS CONTACTS CARD</div>
+                                <div class="utility-row">
+                                    <input type="text" id="c-name-${this.id}" placeholder="Name" style="width:45%;">
+                                    <input type="text" id="c-mono-${this.id}" placeholder="Mono" style="width:20%;">
+                                    <input type="text" id="c-num-${this.id}" placeholder="Number" style="width:35%;">
+                                </div>
+                                <button onclick="this.closest('.phone-wrapper').PhoneInstance.saveContactCard()" style="width:100%; font-size:9px; margin-bottom:6px;">+ Store Contact Identity</button>
+                                
+                                <div id="contacts-list-${this.id}" style="max-height:80px; overflow-y:auto; display:flex; flex-direction:column; gap:3px;">
+                                    </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                this.refreshContactsView();
+            }
+
+            saveContactCard() {
+                const name = document.getElementById(`c-name-${this.id}`).value || "Unknown Contact";
+                const mono = document.getElementById(`c-mono-${this.id}`).value || name.substring(0,2).toUpperCase();
+                const num = document.getElementById(`c-num-${this.id}`).value || "000";
+                this.contacts.push({ name, monogram: mono, number: num });
+                Logger.log(`NODE-${this.id} committed secure contact mapping: [${mono}] ${name} -> ${num}`);
+                this.refreshContactsView();
+            }
+
+            refreshContactsView() {
+                const list = document.getElementById(`contacts-list-${this.id}`);
+                if(!list) return;
+                list.innerHTML = '';
+                this.contacts.forEach(c => {
+                    const row = document.createElement('div');
+                    row.style = "display:flex; align-items:center; justify-content:between; background:#080808; padding:3px; border:1px solid #151515;";
+                    row.innerHTML = `
+                        <div style="display:flex; align-items:center; gap:4px;">
+                            <div class="contact-monogram">${c.monogram}</div>
+                            <div>
+                                <div style="font-weight:bold; font-size:9px;">${c.name}</div>
+                                <div style="color:#555; font-size:8px;">${c.number}</div>
+                            </div>
+                        </div>
+                        <button onclick="document.getElementById('dial-out-${this.id}').innerText = '${c.number}'" style="padding:1px 3px; font-size:8px;">LOAD</button>
+                    `;
+                    list.appendChild(row);
+                });
+            }
+
+            triggerCallInit() {
+                const dialValue = document.getElementById(`dial-out-${this.id}`).innerText;
+                Logger.log(`NODE-${this.id} dialing outbound packet transmission stream directly to path: [${dialValue}]`);
+            }
+
+            // --- MESSAGING SUB-APPLICATION INTERFACE ENGINE ---
+            openMessagesApp() {
+                const space = this.getAppSpace();
+                space.innerHTML = `
+                    <div class="app-view active">
+                        <div class="app-header"><div>MESSAGES SYSTEM</div><button onclick="this.closest('.phone-wrapper').PhoneInstance.closeActiveApp()">X</button></div>
+                        <div class="app-body">
+                            <div class="utility-row">
+                                <input type="text" id="msg-to-${this.id}" placeholder="Target Device ID (e.g. node-101)">
+                                <button onclick="this.closest('.phone-wrapper').PhoneInstance.initiateMessageThread()">OPEN</button>
+                            </div>
+                            
+                            <div id="messages-main-view-${this.id}">
+                                <div class="msg-threads" id="threads-container-${this.id}">
+                                    </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                this.renderMessageThreadsList();
+            }
+
+            initiateMessageThread() {
+                const targetId = document.getElementById(`msg-to-${this.id}`).value;
+                if(!targetId) return;
+                this.openChatStreamView(targetId);
+            }
+
+            renderMessageThreadsList() {
+                const container = document.getElementById(`threads-container-${this.id}`);
+                if(!container) return;
+                container.innerHTML = '';
+
+                // Extract active structural threads involving this node configuration endpoint
+                const interactedNodes = new Set();
+                NetworkHub.socialMessages.forEach(m => {
+                    if (m.sender === this.domElement.id) interactedNodes.add(m.recipient);
+                    if (m.recipient === this.domElement.id) interactedNodes.add(m.sender);
+                });
+
+                if(interactedNodes.size === 0) {
+                    container.innerHTML = `<div style="text-align:center; color:#555; margin-top:20px; font-size:10px;">No Active Local Signal Threads Found</div>`;
+                }
+
+                interactedNodes.forEach(nodeId => {
+                    const matchedContact = this.contacts.find(c => `node-${c.number}` === nodeId || c.name === nodeId) || { name: nodeId, monogram: "CH" };
+                    const row = document.createElement('div');
+                    row.className = 'thread-row';
+                    row.onclick = () => this.openChatStreamView(nodeId);
+                    row.innerHTML = `
+                        <div class="contact-monogram">${matchedContact.monogram}</div>
+                        <div>
+                            <div style="font-weight:bold; font-size:10px;">${matchedContact.name}</div>
+                            <div style="font-size:8px; color:#666;">Open localized grid connection path</div>
+                        </div>
+                    `;
+                    container.appendChild(row);
+                });
+            }
+
+            openChatStreamView(recipientId) {
+                this.currentChatRecipient = recipientId;
+                const space = this.getAppSpace();
+                space.innerHTML = `
+                    <div class="app-view active">
+                        <div class="app-header">
+                            <div>CHAT: ${recipientId}</div>
+                            <button onclick="this.closest('.phone-wrapper').PhoneInstance.openMessagesApp()">BACK</button>
+                        </div>
+                        <div class="app-body">
+                            <div class="chat-stream" id="chat-stream-box-${this.id}" style="background-image: ${this.chatBackground !== 'transparent' ? "url('" + Wallpapers[this.chatBackground] + "')" : 'none'};">
+                                </div>
+                            <div class="utility-row">
+                                <input type="text" id="chat-input-${this.id}" placeholder="Type secure packet payload...">
+                                <button onclick="this.closest('.phone-wrapper').PhoneInstance.dispatchChatMessage()">SEND</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                this.refreshChatBubblesEngine();
+            }
+
+            dispatchChatMessage() {
+                const input = document.getElementById(`chat-input-${this.id}`);
+                if(!input || !input.value) return;
+                NetworkHub.sendSocialMessage(this.domElement.id, this.currentChatRecipient, input.value);
+                input.value = '';
+                this.refreshChatBubblesEngine();
+            }
+
+            refreshChatBubblesEngine() {
+                const box = document.getElementById(`chat-stream-box-${this.id}`);
+                if(!box) return;
+                box.innerHTML = '';
+
+                const relevant = NetworkHub.socialMessages.filter(m => 
+                    (m.sender === this.domElement.id && m.recipient === this.currentChatRecipient) ||
+                    (m.sender === this.currentChatRecipient && m.recipient === this.domElement.id)
+                );
+
+                relevant.forEach(m => {
+                    const bubble = document.createElement('div');
+                    if (m.sender === this.domElement.id) {
+                        bubble.className = 'chat-bubble sent';
+                    } else {
+                        // Check if sender node architecture layout matches the custom Android-like profile parameter rules
+                        const sourceDevice = NetworkHub.devices.get(m.sender);
+                        const isSenderAndroid = sourceDevice && sourceDevice.isAndroidLike;
+                        
+                        // Lime bubble assigned explicitly if message arrives from alternative environment layout structure
+                        bubble.className = `chat-bubble rcvd ${isSenderAndroid ? 'lime-bubble' : 'blue-bubble'}`;
+                    }
+                    bubble.innerText = m.content;
+                    box.appendChild(bubble);
+                });
+                box.scrollTop = box.scrollHeight;
+            }
+
+            // --- SOCIAL APP WITH SUB MESSAGING FEED & SHORT-FORM CLIPS ---
+            openSocialApp() {
+                const space = this.getAppSpace();
+                space.innerHTML = `
+                    <div class="app-view active">
+                        <div class="app-header"><div>SOCIALGRID ENG</div><button onclick="this.closest('.phone-wrapper').PhoneInstance.closeActiveApp()">X</button></div>
+                        <div class="soc-nav-tabs">
+                            <div class="soc-tab-btn active" id="stab-feed-${this.id}" onclick="this.closest('.phone-wrapper').PhoneInstance.switchSocialTab('feed')">FEED</div>
+                            <div class="soc-tab-btn" id="stab-clips-${this.id}" onclick="this.closest('.phone-wrapper').PhoneInstance.switchSocialTab('clips')">SHORTS</div>
+                            <div class="soc-tab-btn" id="stab-msg-${this.id}" onclick="this.closest('.phone-wrapper').PhoneInstance.switchSocialTab('msg')">DM RELAY</div>
+                        </div>
+                        <div class="app-body" id="soc-panel-body-${this.id}">
+                            </div>
+                    </div>
+                `;
+                this.switchSocialTab('feed');
+            }
+
+            switchSocialTab(tab) {
+                const body = document.getElementById(`soc-panel-body-${this.id}`);
+                if(!body) return;
+
+                // Adjust tab highlighting state
+                ['feed', 'clips', 'msg'].forEach(t => {
+                    const btn = document.getElementById(`stab-${t}-${this.id}`);
+                    if(btn) btn.classList.remove('active');
+                });
+                const activeBtn = document.getElementById(`stab-${tab}-${this.id}`);
+                if(activeBtn) activeBtn.classList.add('active');
+
+                if (tab === 'feed') {
+                    body.innerHTML = `
+                        <div class="soc-acc-bar" id="soc-auth-bar-${this.id}"></div>
+                        <div id="soc-main-screen-${this.id}" style="display:none; flex-direction:column; fill-grow:1; height:100%;">
+                            <div class="utility-row">
+                                <input type="text" id="soc-post-input-${this.id}" placeholder="What's compiled on your machine?">
+                                <button onclick="this.closest('.phone-wrapper').PhoneInstance.submitSocialPost()">POST</button>
+                            </div>
+                            <div class="soc-timeline" id="soc-timeline-target-${this.id}" style="flex-grow:1; overflow-y:auto; margin-top:4px;"></div>
+                        </div>
+                        <div id="soc-auth-screen-${this.id}" style="display:flex; flex-direction:column; gap:4px; margin-top:10px;">
+                            <input type="text" id="soc-user-input-${this.id}" placeholder="@username token mapping">
+                            <button onclick="this.closest('.phone-wrapper').PhoneInstance.authSocialProfile()">INITIALIZE AUTH TOKEN</button>
+                        </div>
+                    `;
+                    this.renderSocialAppView();
+                } else if (tab === 'clips') {
+                    body.innerHTML = `<div class="shortform-container" id="shorts-container-${this.id}"></div>`;
+                    this.renderShortFormFeed();
+                } else if (tab === 'msg') {
+                    body.innerHTML = `
+                        <div style="display:flex; flex-direction:column; height:100%; flex-grow:1;">
+                            <div class="utility-row">
+                                <input type="text" id="soc-dm-target-${this.id}" placeholder="@recipient user handle">
+                            </div>
+                            <div class="chat-stream" id="soc-dm-stream-${this.id}" style="flex-grow:1; background:#020202; height:120px; overflow-y:auto; border:1px solid #111;"></div>
+                            <div class="utility-row">
+                                <input type="text" id="soc-dm-input-${this.id}" placeholder="Type DM network payload...">
+                                <button onclick="this.closest('.phone-wrapper').PhoneInstance.sendSocialDM()">SEND</button>
+                            </div>
+                        </div>
+                    `;
+                    this.activeSocialUser ? this.refreshSocialMessages() : (document.getElementById(`soc-dm-stream-${this.id}`).innerHTML = "<div style='color:#555; padding:10px;'>Login on FEED first to engage messaging channel</div>");
+                }
+            }
+
+            // --- SOCIAL DIRECT MESSAGING MATRIX LOGIC ENGINE ---
+            sendSocialDM() {
+                const targetInput = document.getElementById(`soc-dm-target-${this.id}`);
+                const msgInput = document.getElementById(`soc-dm-input-${this.id}`);
+                if(!targetInput || !msgInput || !msgInput.value || !targetInput.value) return;
+
+                NetworkHub.sendSocialMessage(this.activeSocialUser, targetInput.value, msgInput.value);
+                msgInput.value = '';
+                this.refreshSocialMessages();
+            }
+
+            refreshSocialMessages() {
+                const box = document.getElementById(`soc-dm-stream-${this.id}`);
+                if(!box) return;
+                box.innerHTML = '';
+                
+                const targetInput = document.getElementById(`soc-dm-target-${this.id}`);
+                const targetUser = targetInput ? targetInput.value : '';
+
+                const relevant = NetworkHub.socialMessages.filter(m => 
+                    (m.sender === this.activeSocialUser && m.recipient === targetUser) ||
+                    (m.sender === targetUser && m.recipient === this.activeSocialUser)
+                );
+
+                relevant.forEach(m => {
+                    const block = document.createElement('div');
+                    block.style = "padding:3px; margin-bottom:2px; font-size:10px; border-bottom:1px solid #111;";
+                    block.innerHTML = `<span style="color:${m.sender === this.activeSocialUser ? '#ffcc00' : '#00ffcc'}">${m.sender}:</span> ${m.content}`;
+                    box.appendChild(block);
+                });
+                box.scrollTop = box.scrollHeight;
+            }
+
+            // --- SCROLLABLE SHORT FORM micro-VIDEO ENGINE ---
+            renderShortFormFeed() {
+                const container = document.getElementById(`shorts-container-${this.id}`);
+                if(!container) return;
+                container.innerHTML = '';
+
+                NetworkHub.shortClips.forEach(clip => {
+                    const block = document.createElement('div');
+                    block.className = 'short-clip';
+                    block.style.backgroundColor = clip.bg;
+                    block.style.backgroundImage = `linear-gradient(rgba(0,0,0,0.1), rgba(0,0,0,0.85))`;
+                    block.innerHTML = `
+                        <div class="short-title">${clip.title}</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                            <span class="short-metrics">${clip.views}</span>
+                            <button onclick="event.stopPropagation(); this.innerText = '♥ Liked'" style="font-size:8px; padding:1px 4px;">♥</button>
+                        </div>
+                    `;
+                    container.appendChild(block);
+                });
+            }
+
+            authSocialProfile() {
+                const token = document.getElementById(`soc-user-input-${this.id}`).value;
+                if(token) {
+                    this.activeSocialUser = token.startsWith('@') ? token : '@' + token;
+                    Logger.log(`Device NODE-${this.id} localized social environment auth map: [${this.activeSocialUser}]`);
+                    this.renderSocialAppView();
+                }
+            }
+
+            submitSocialPost() {
+                const text = document.getElementById(`soc-post-input-${this.id}`).value;
+                if(!text) return;
+                NetworkHub.broadcastPost(this.activeSocialUser, text);
+                document.getElementById(`soc-post-input-${this.id}`).value = '';
+            }
+
+            renderSocialAppView() {
+                const bar = document.getElementById(`soc-auth-bar-${this.id}`);
+                const mainScreen = document.getElementById(`soc-main-screen-${this.id}`);
+                const authScreen = document.getElementById(`soc-auth-screen-${this.id}`);
+                if(!bar) return;
+                
+                bar.innerHTML = '';
+                if(this.activeSocialUser) {
+                    const activeIndicator = document.createElement('div');
+                    activeIndicator.className = 'mini-avatar active';
+                    activeIndicator.innerText = this.activeSocialUser;
+                    bar.appendChild(activeIndicator);
+                } else {
+                    const addBtn = document.createElement('button');
+                    addBtn.innerText = ' [ + Auth New ]';
+                    addBtn.style.borderColor = '#222';
+                    addBtn.addEventListener('click', () => {
+                        this.activeSocialUser = null;
+                        this.renderSocialAppView();
+                    });
+                    bar.appendChild(addBtn);
+                }
+
+                if(!this.activeSocialUser) {
+                    if(mainScreen) mainScreen.style.display = 'none';
+                    if(authScreen) authScreen.style.display = 'flex';
+                } else {
+                    if(authScreen) authScreen.style.display = 'none';
+                    if(mainScreen) mainScreen.style.display = 'flex';
+                    this.refreshSocialFeed();
+                }
+            }
+
+            refreshSocialFeed() {
+                const timeline = document.getElementById(`soc-timeline-target-${this.id}`);
+                if(!timeline) return;
+                timeline.innerHTML = '';
+                
+                NetworkHub.socialPosts.forEach(post => {
+                    const block = document.createElement('div');
+                    block.className = 'soc-post';
+                    block.innerHTML = `<div class="soc-handle">${post.sender}</div><div style="word-break:break-all;">${post.content}</div>`;
+                    timeline.appendChild(block);
+                });
+            }
+
+            // --- SYSTEM RECONFIGURATION SETTINGS ENGINE ---
+            openSettingsApp() {
+                const space = this.getAppSpace();
+                space.innerHTML = `
+                    <div class="app-view active">
+                        <div class="app-header"><div>CORE CONTROL PANEL</div><button onclick="this.closest('.phone-wrapper').PhoneInstance.closeActiveApp()">X</button></div>
+                        <div class="app-body">
+                            <div style="font-weight:bold; margin-bottom:4px; font-size:10px; color:#ffcc00;">CORE RE-RICE SETTINGS</div>
+                            
+                            <div style="margin-bottom:8px;">
+                                <label style="font-size:9px; color:#aaa; display:block; margin-bottom:2px;">Desktop Engine Wallpaper:</label>
+                                <select id="wp-select-${this.id}" onchange="this.closest('.phone-wrapper').PhoneInstance.setDeviceWallpaper(this.value)" style="width:100%;">
+                                    <option value="classicDevice" ${this.currentWallpaper==='classicDevice'?'selected':''}>Classic Monochrome System Grid</option>
+                                    <option value="matrix" ${this.currentWallpaper==='matrix'?'selected':''}>SVG Matrix Green Terminal Mesh</option>
+                                    <option value="neonCircuit" ${this.currentWallpaper==='neonCircuit'?'selected':''}>SVG Neon Circuit Architecture</option>
+                                    <option value="industrialMesh" ${this.currentWallpaper==='industrialMesh'?'selected':''}>SVG Industrial Diamond Plate Grid</option>
+                                    <option value="pixelateDefault" ${this.currentWallpaper==='pixelateDefault'?'selected':''}>Alternative Material Design Theme</option>
+                                </select>
+                            </div>
+
+                            <div style="margin-bottom:8px;">
+                                <label style="font-size:9px; color:#aaa; display:block; margin-bottom:2px;">Messages Chat Background:</label>
+                                <select id="cb-select-${this.id}" onchange="this.closest('.phone-wrapper').PhoneInstance.setChatBackground(this.value)" style="width:100%;">
+                                    <option value="transparent" ${this.chatBackground==='transparent'?'selected':''}>Transparent / Solid Base Dark</option>
+                                    <option value="matrix" ${this.chatBackground==='matrix'?'selected':''}>SVG Matrix Grid Layer</option>
+                                    <option value="neonCircuit" ${this.chatBackground==='neonCircuit'?'selected':''}>SVG Cyber Neon Lines</option>
+                                    <option value="industrialMesh" ${this.chatBackground==='industrialMesh'?'selected':''}>SVG Metallic Mesh Plate</option>
+                                </select>
+                            </div>
+
+                            <div style="font-size:8px; color:#444; margin-top:10px; border-top:1px solid #222; padding-top:6px;">
+                                HW-STATE: OPERATIONAL<br>
+                                BASEBOARD FIRMWARE V1.9.5<br>
+                                LINK MODULE STATUS: ACTIVE
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            setDeviceWallpaper(wpKey) {
+                this.currentWallpaper = wpKey;
+                const screen = this.domElement.querySelector('.screen');
+                if(screen) {
+                    screen.style.backgroundImage = `url('${Wallpapers[wpKey]}')`;
+                }
+                Logger.log(`Device NODE-${this.id} updated desktop render pipeline to SVG theme wallpaper: [${wpKey}]`);
+            }
+
+            setChatBackground(cbKey) {
+                this.chatBackground = cbKey;
+                Logger.log(`Device NODE-${this.id} changed local message engine chat backplate pattern to: [${cbKey}]`);
+            }
+        }
+
+        // Initialize Simulator Workspace components on execution load
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+            Logger.init();
+        };
+    </script>
+</body>
+</html>

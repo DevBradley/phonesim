@@ -1,0 +1,1595 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Device Workspace Simulation</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #121212;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #e0e0e0;
+            --text-muted: #777777;
+            --accent: #555555;
+            --accent-active: #aaaaaa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Diagnostics Control Panel */
+        #control-panel {
+            height: 180px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            z-index: 10;
+            padding: 10px;
+            gap: 15px;
+        }
+
+        .panel-section {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+
+        .panel-section h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 3px;
+        }
+
+        #sys-controls { width: 260px; }
+        #sim-factory { width: 300px; }
+        #network-logger { flex-grow: 1; }
+
+        .log-stream {
+            font-size: 11px;
+            color: #00ff00;
+            overflow-y: auto;
+            flex-grow: 1;
+            background: #050505;
+            padding: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+        }
+
+        .log-entry { margin-bottom: 3px; white-space: nowrap; }
+
+        button, select, input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 5px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        button:hover {
+            background: var(--border-color);
+            border-color: var(--text-muted);
+        }
+
+        input { cursor: text; }
+
+        /* Workspace Grid (Infinite Pan Canvas) */
+        #workspace-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #workspace-container:active { cursor: grabbing; }
+
+        #workspace-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5000px;
+            height: 5000px;
+            transform-origin: 0 0;
+        }
+
+        /* 3D Phone Chassis Styles */
+        .phone-wrapper {
+            position: absolute;
+            perspective: 1000px;
+            width: 260px;
+            height: 510px;
+            z-index: 5;
+        }
+
+        /* Model Scaling Layouts */
+        .phone-wrapper.m-5 { width: 230px; height: 460px; }
+        .phone-wrapper.m-5c { width: 230px; height: 460px; }
+        .phone-wrapper.m-6 { width: 245px; height: 495px; }
+        .phone-wrapper.m-7 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8p { width: 265px; height: 520px; }
+        .phone-wrapper.m-x { width: 265px; height: 535px; }
+        .phone-wrapper.m-11 { width: 270px; height: 540px; }
+        .phone-wrapper.m-12 { width: 265px; height: 535px; }
+        .phone-wrapper.m-13 { width: 265px; height: 535px; }
+        .phone-wrapper.v-p1 { width: 240px; height: 490px; }
+        .phone-wrapper.v-p3 { width: 245px; height: 500px; }
+        .phone-wrapper.v-p6 { width: 260px; height: 530px; }
+        .phone-wrapper.v-p8 { width: 260px; height: 530px; }
+        .phone-wrapper.v-pFold1 { width: 280px; height: 520px; }
+        .phone-wrapper.v-pFold2 { width: 285px; height: 525px; }
+        .phone-wrapper.v-p10 { width: 260px; height: 535px; }
+        .phone-wrapper.v-p10XL { width: 275px; height: 550px; }
+
+        .phone-card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+
+        .phone-wrapper.flipped .phone-card {
+            transform: rotateY(180deg);
+        }
+
+        .phone-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 28px;
+            border: 4px solid #333;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Front Face Architecture */
+        .phone-front {
+            background: #111111;
+            color: var(--text-main);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+
+        /* Cellular Antenna Band Engineering Lines */
+        .phone-back .antenna-line.horiz-top { top: 55px; left: 0; width: 100%; height: 2px; background: rgba(0,0,0,0.3); position: absolute;}
+        .phone-back .antenna-line.horiz-bottom { bottom: 55px; left: 0; width: 100%; height: 2px; background: rgba(0,0,0,0.3); position: absolute;}
+
+        /* Chassis Framework Variant Profiles */
+        .m-5 .phone-front { border-radius: 24px; }
+        .m-5c .phone-front { border-radius: 26px; }
+        .m-6 .phone-front { border-radius: 32px; }
+        .m-7 .phone-front { }
+        .m-8 .phone-front { }
+        .m-8p .phone-front { }
+        
+        /* Edge to edge dynamic screens */
+        .m-x .phone-front, .m-11 .phone-front, .m-12 .phone-front, .m-13 .phone-front,
+        .v-p6 .phone-front, .v-p8 .phone-front, .v-pFold1 .phone-front, .v-pFold2 .phone-front, .v-p10 .phone-front, .v-p10XL .phone-front { border-radius: 40px; padding: 4px; }
+        .m-x .top-bezel, .m-11 .top-bezel, .m-12 .top-bezel, .m-13 .top-bezel,
+        .v-p6 .top-bezel, .v-p8 .top-bezel, .v-pFold1 .top-bezel, .v-pFold2 .top-bezel, .v-p10 .top-bezel, .v-p10XL .top-bezel { height: 32px; background: transparent !important; z-index: 15; }
+        
+        .m-x .notch, .m-11 .notch, .m-12 .notch, .m-13 .notch {
+            width: 110px; height: 22px; background: #000 !important; border-radius: 0 0 12px 12px;
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            display: flex; justify-content: center; align-items: center; gap: 8px;
+        }
+        .m-13 .notch { width: 85px; height: 22px; }
+        .m-x .speaker-grille, .m-11 .speaker-grille, .m-12 .speaker-grille, .m-13 .speaker-grille { width: 35px; height: 3px; background: #222; }
+        .m-x .front-cam, .m-11 .front-cam, .m-12 .front-cam, .m-13 .front-cam { position: static; width: 6px; height: 6px; background: #111133; }
+        .m-x .bottom-bezel, .m-11 .bottom-bezel, .m-12 .bottom-bezel, .m-13 .bottom-bezel,
+        .v-p6 .bottom-bezel, .v-p8 .bottom-bezel, .v-pFold1 .bottom-bezel, .v-pFold2 .bottom-bezel, .v-p10 .bottom-bezel, .v-p10XL .bottom-bezel { display: none !important; }
+        .m-x .screen, .m-11 .screen, .m-12 .screen, .m-13 .screen,
+        .v-p6 .screen, .v-p8 .screen, .v-pFold1 .screen, .v-pFold2 .screen, .v-p10 .screen, .v-p10XL .screen { border-radius: 34px; border: none; }
+
+        /* V-Brand Pin-hole Cameras */
+        .v-hole { width: 6px; height: 6px; background: #050515; border-radius: 50%; position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 20; }
+
+        /* System Bezels */
+        .top-bezel {
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .speaker-grille {
+            width: 45px;
+            height: 4px;
+            background: #222;
+            border-radius: 2px;
+        }
+        .front-cam {
+            width: 7px;
+            height: 7px;
+            background: #1a1a2e;
+            border-radius: 50%;
+            position: absolute;
+            left: 70px;
+        }
+
+        .bottom-bezel {
+            height: 45px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .home-button {
+            width: 34px;
+            height: 34px;
+            border: 1px solid #333;
+            border-radius: 50%;
+            cursor: pointer;
+            background: radial-gradient(circle, #151515 0%, #0a0a0a 100%);
+        }
+
+        /* Screen Architecture */
+        .screen {
+            flex-grow: 1;
+            background: #000;
+            border: 1px solid #222;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .status-bar {
+            height: 20px;
+            background: rgba(8, 8, 8, 0.75);
+            font-size: 9px;
+            padding: 0 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(17, 17, 17, 0.3);
+            color: var(--text-muted);
+            z-index: 12;
+        }
+        .m-x .status-bar, .m-11 .status-bar, .m-12 .status-bar, .m-13 .status-bar,
+        .v-p6 .status-bar, .v-p8 .status-bar, .v-pFold1 .status-bar, .v-pFold2 .status-bar, .v-p10 .status-bar, .v-p10XL .status-bar { height: 26px; padding-top: 6px; background: rgba(0, 0, 0, 0.75); }
+
+        .status-left, .status-right { display: flex; gap: 4px; align-items: center; }
+
+        .app-space {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* System App Containers */
+        .app-view {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            display: none;
+            flex-direction: column;
+            z-index: 5;
+            overflow: hidden;
+        }
+        .app-view.active { display: flex; }
+
+        .app-header {
+            height: 32px;
+            background: #0d0d0d;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .app-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+        }
+
+        /* Home Indicator Bar for Edge-to-Edge Layouts */
+        .home-bar {
+            display: none;
+            width: 110px; height: 4px; background: #888; border-radius: 2px;
+            position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+            z-index: 100; cursor: pointer;
+        }
+        .m-x .home-bar, .m-11 .home-bar, .m-12 .home-bar, .m-13 .home-bar,
+        .v-p6 .home-bar, .v-p8 .home-bar, .v-pFold1 .home-bar, .v-pFold2 .home-bar, .v-p10 .home-bar, .v-p10XL .home-bar { display: block; }
+
+        /* OS Dock / Grid Launcher */
+        .launcher-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .app-icon {
+            background: rgba(13, 13, 13, 0.75);
+            border: 1px solid var(--border-color);
+            height: 58px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 10px;
+            gap: 2px;
+        }
+        .app-icon:hover { background: rgba(21, 21, 21, 0.9); }
+        .app-icon span { font-size: 16px; }
+
+        /* V-OS Custom Layouts (Android-like UI spec) */
+        .vos-theme .app-header { background: #1c1b1f; border-bottom: 1px solid #2d2c30; border-radius: 0; }
+        .vos-theme .app-icon { background: rgba(36,35,40,0.85); border: 1px solid #4a4950; border-radius: 20px; }
+        .vos-theme button { border-radius: 16px; background: #2b2930; border: 1px solid #4f4d56; }
+        .vos-theme input { border-radius: 8px; background: #1c1b1f; border: 1px solid #4a4950; }
+
+        /* Phone App Elements */
+        .dialer-output {
+            background: #050505;
+            border: 1px solid #1a1a1a;
+            padding: 4px;
+            text-align: right;
+            font-size: 14px;
+            margin-bottom: 6px;
+            min-height: 24px;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+        .dialer-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .dial-btn {
+            background: #0c0c0c;
+            border: 1px solid #1e1e1e;
+            padding: 6px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .dial-btn:hover { background: #1a1a1a; }
+        .call-actions { display: flex; gap: 5px; }
+
+        .inc-call-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+        .inc-call-overlay.active { display: flex; }
+
+        /* Contacts Integration Layout */
+        .contact-monogram {
+            width: 24px; height: 24px; border-radius: 50%; background: #333; color: #fff;
+            display: inline-flex; align-items: center; justify-content: center;
+            font-size: 9px; font-weight: bold; margin-right: 6px; text-transform: uppercase;
+        }
+        .contact-item {
+            display: flex; align-items: center; padding: 4px; background: #111;
+            margin-bottom: 2px; border: 1px solid #222; border-radius: 4px;
+        }
+
+        /* Messaging Subsystem */
+        .msg-threads { display: flex; flex-direction: column; gap: 4px; }
+        .thread-row {
+            padding: 6px; background: #090909; border: 1px solid #151515; cursor: pointer; display: flex; align-items: center;
+        }
+        .chat-stream { flex-grow: 1; overflow-y: auto; background: #030303; border: 1px solid #111; padding: 4px; margin-bottom: 4px; display: flex; flex-direction: column; background-size: cover; background-position: center; }
+        .chat-bubble { max-width: 85%; padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; word-break: break-all; font-size: 10px; }
+        .chat-bubble.sent { background: #007aff; color: #fff; align-self: flex-end; }
+        .chat-bubble.sent.vos-sent { background: #34a853; color: #fff; }
+        .chat-bubble.rcvd { background: #222; align-self: flex-start; }
+        .chat-bubble.rcvd.from-vos { background: #4cd964; color: #000; }
+        .chat-bubble.rcvd.from-ios { background: #007aff; color: #fff; }
+
+        /* Social Network UI */
+        .soc-acc-bar {
+            display: flex; gap: 3px; background: #0a0a0a; padding: 4px; border-bottom: 1px solid #1a1a1a; overflow-x: auto; flex-shrink: 0;
+        }
+        .mini-avatar {
+            font-size: 9px; padding: 2px 4px; background: #151515; border: 1px solid #333; cursor: pointer; white-space: nowrap;
+        }
+        .mini-avatar.active { background: #333; color: #fff; }
+        .soc-post {
+            background: #0a0a0a; border: 1px solid #1a1a1a; padding: 6px; margin-bottom: 6px; border-radius: 2px;
+        }
+        .soc-handle { color: var(--text-muted); font-size: 10px; margin-bottom: 2px; }
+
+        /* Social Short-form Feed Component */
+        .short-container {
+            display: flex; flex-direction: column; gap: 10px; overflow-y: scroll; snap-type: y mandatory; height: 180px; background: #000; border: 1px solid #222; border-radius: 4px;
+        }
+        .short-slide {
+            flex-shrink: 0; width: 100%; height: 180px; snap-align: start; position: relative; display: flex; flex-direction: column; justify-content: flex-end; padding: 8px; background-size: cover; background-position: center;
+        }
+        .short-overlay { background: rgba(0,0,0,0.6); padding: 4px; border-radius: 2px; font-size: 9px; }
+
+        /* Physical Back Face Architecture */
+        .phone-back {
+            transform: rotateY(180deg);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 28px;
+            position: relative;
+        }
+        
+        /* Shell Finishes / Colors Rules */
+        .phone-card[data-color="matte-black"] .phone-back { background: #141414; color: #888; border-color: #222; }
+        .phone-card[data-color="industrial-gray"] .phone-back { background: #2e2e2e; color: #ccc; border-color: #444; }
+        .phone-card[data-color="monochrome-white"] .phone-back { background: #dcdcdc; color: #222; border-color: #aaaaaa; }
+        .phone-card[data-color="rose-gold"] .phone-back { background: #fad6d6; color: #444; border-color: #e0b2b2; }
+        .phone-card[data-color="rose"] .phone-back { background: #ffb6c1; color: #444; border-color: #e8a2ad; }
+        
+        /* Model 5c Polycarbonate */
+        .phone-card[data-color="neon-blue"] .phone-back { background: #00a3e0; color: #fff; border-color: #0082b3; }
+        .phone-card[data-color="lime-green"] .phone-back { background: #4cd964; color: #000; border-color: #3cb252; }
+        .phone-card[data-color="coral-pink"] .phone-back { background: #ff4f6a; color: #fff; border-color: #e03b54; }
+        .phone-card[data-color="canary-yellow"] .phone-back { background: #ffcc00; color: #000; border-color: #e6b800; }
+
+        /* Model 6 / 11 Architectural Paint Specs */
+        .phone-card[data-color="space-gray"] .phone-back { background: #555559; color: #eee; border-color: #3a3a3c; }
+        .phone-card[data-color="gold"] .phone-back { background: #f9e4b7; color: #333; border-color: #e5cb93; }
+        .phone-card[data-color="silver"] .phone-back { background: #e3e4e6; color: #111; border-color: #b5b6b8; }
+        .phone-card[data-color="purple"] .phone-back { background: #d1cddb; color: #222; border-color: #b7b2c5; }
+        .phone-card[data-color="mint-green"] .phone-back { background: #addece; color: #111; border-color: #90c2b2; }
+        .phone-card[data-color="product-red"] .phone-back { background: #d92632; color: #fff; border-color: #b51620; }
+
+        /* Real-life Model 12 / 13 Finishes */
+        .phone-card[data-color="deep-blue"] .phone-back { background: #2c4152; color: #fff; border-color: #1e2d3b; }
+        .phone-card[data-color="mint"] .phone-back { background: #e0f2e9; color: #111; border-color: #b8ded0; }
+        .phone-card[data-color="midnight"] .phone-back { background: #1a2228; color: #fff; border-color: #11171c; }
+        .phone-card[data-color="starlight"] .phone-back { background: #fbf7f4; color: #222; border-color: #e3deda; }
+        .phone-card[data-color="pink"] .phone-back { background: #fae0e4; color: #222; border-color: #e3c1c7; }
+
+        /* Real-life V-Brand Variant Finishes */
+        .phone-card[data-color="quite-black"] .phone-back { background: #2e3033; color: #fff; border-color: #1a1b1d; }
+        .phone-card[data-color="very-silver"] .phone-back { background: #e3e5e8; color: #111; border-color: #bebfc2; }
+        .phone-card[data-color="not-pink"] .phone-back { background: #f7e1da; color: #222; border-color: #dec5be; }
+        .phone-card[data-color="clearly-white"] .phone-back { background: #fcfcfc; color: #111; border-color: #e2e2e2; }
+        .phone-card[data-color="stormy-black"] .phone-back { background: #28292b; color: #fff; border-color: #1c1d1f; }
+        .phone-card[data-color="sorta-seafoam"] .phone-back { background: #daecdf; color: #111; border-color: #b5cfbe; }
+        .phone-card[data-color="hazel"] .phone-back { background: #5a615c; color: #fff; border-color: #434a45; }
+        .phone-card[data-color="obsidian"] .phone-back { background: #1c1c1e; color: #fff; border-color: #0b0b0c; }
+        .phone-card[data-color="porcelain"] .phone-back { background: #f4f3ef; color: #222; border-color: #dbdad4; }
+        .phone-card[data-color="bay-blue"] .phone-back { background: #a3cbf3; color: #111; border-color: #7fa8cf; }
+
+        /* Front Bezels Painting Rules */
+        .phone-card[data-front-theme="black"] .phone-front { background: #0c0c0c; border-color: inherit; }
+        .phone-card[data-front-theme="black"] .top-bezel, .phone-card[data-front-theme="black"] .bottom-bezel { background: #0c0c0c; color: #fff; }
+        .phone-card[data-front-theme="white"] .phone-front { background: #eaeaea; border-color: inherit; color: #222; }
+        .phone-card[data-front-theme="white"] .top-bezel, .phone-card[data-front-theme="white"] .bottom-bezel { background: #eaeaea; color: #222; }
+        .phone-card[data-front-theme="white"] .status-bar { background: rgba(220, 220, 220, 0.85); color: #333; }
+
+        /* Hardware Interactive Lateral Side Tray */
+        .hardware-sim-tray-bracket {
+            position: absolute;
+            right: -12px;
+            top: 160px;
+            width: 12px;
+            height: 48px;
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 0 4px 4px 0;
+            cursor: pointer;
+            z-index: 40;
+            padding: 2px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: width 0.2s ease;
+        }
+        .hardware-sim-tray-bracket.expanded {
+            width: 175px;
+            right: -175px;
+            height: auto;
+            min-height: 55px;
+            flex-direction: column;
+            background: #111;
+            border: 2px solid #ffcc00;
+            border-radius: 4px;
+            padding: 6px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+        }
+        .side-tray-label {
+            font-size: 8px;
+            color: #ffcc00;
+            font-weight: bold;
+            margin-bottom: 3px;
+            text-transform: uppercase;
+            display: none;
+        }
+        .hardware-sim-tray-bracket.expanded .side-tray-label { display: block; }
+        .side-sim-select {
+            display: none;
+            width: 100%;
+            font-size: 10px;
+            background: #000;
+            color: #fff;
+            border: 1px solid #444;
+            padding: 2px;
+            margin-bottom: 4px;
+        }
+        .hardware-sim-tray-bracket.expanded .side-sim-select { display: block; }
+        .side-tray-icon { font-size: 10px; color: #aaa; }
+        .hardware-sim-tray-bracket.expanded .side-tray-icon { display: none; }
+
+        /* Repositioned Camera Housings (Top Left Offset Architecture) */
+        .cam-housing {
+            background: #0a0a0a;
+            border: 2px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 15px;
+            left: 15px;
+        }
+        /* Legacy Single Camera Profiles */
+        .m-5 .cam-housing, .m-5c .cam-housing, .m-6 .cam-housing, .m-7 .cam-housing, .m-8 .cam-housing,
+        .v-p1 .cam-housing, .v-p3 .cam-housing {
+            width: 26px; height: 26px; border-radius: 50%;
+        }
+        /* Dual Camera Horizontal Profiles */
+        .m-8p .cam-housing {
+            width: 44px; height: 24px; border-radius: 12px; gap: 4px; padding: 0 4px;
+        }
+        /* Dual Camera Vertical Complex Profiles */
+        .m-x .cam-housing, .m-12 .cam-housing {
+            width: 24px; height: 44px; border-radius: 12px; gap: 4px; padding: 4px 0; flex-direction: column;
+        }
+        /* Diagonal Layout (Model 13) */
+        .m-13 .cam-housing {
+            width: 44px; height: 44px; border-radius: 14px; position: absolute; display: block; background: rgba(20,20,20,0.8);
+        }
+        .m-13 .cam-housing .lens:nth-child(1) { position: absolute; top: 6px; left: 6px; }
+        .m-13 .cam-housing .lens:nth-child(2) { position: absolute; bottom: 6px; right: 6px; }
+
+        /* V-Brand Horizon Camera Bars */
+        .v-p6 .cam-housing, .v-p8 .cam-housing, .v-pFold1 .cam-housing, .v-pFold2 .cam-housing, .v-p10 .cam-housing, .v-p10XL .cam-housing {
+            width: calc(100% - 10px); height: 24px; left: 5px; top: 40px; border-radius: 4px; display: flex; flex-direction: row; justify-content: center; gap: 10px;
+        }
+
+        .lens { width: 10px; height: 10px; background: #05101a; border-radius: 50%; border: 1px solid #111; margin: auto; }
+
+        /* Square Multi-Lens Complex Array (Model 11) */
+        .m-11 .cam-housing {
+            width: 48px; height: 48px; border-radius: 14px; gap: 4px; padding: 4px; display: grid; grid-template-columns: repeat(2, 1fr); background: rgba(20,20,20,0.8);
+        }
+
+        .hardware-info { text-align: center; margin-top: 60px; font-size: 9px; text-transform: uppercase; line-height: 14px; color: inherit; opacity: 0.7; width: 100%; }
+
+        /* Window Overlay Utilitarian Elements */
+        .utility-row { display: flex; gap: 4px; margin-bottom: 4px; flex-shrink: 0; }
+        .utility-row input { flex-grow: 1; }
+        
+        /* Floating HUD metrics on devices */
+        .spatial-hud {
+            position: absolute; bottom: -35px; left: 0; width: 100%;
+            text-align: center; font-size: 10px; color: var(--text-muted);
+            pointer-events: none; line-height: 14px;
+        }
+
+        .flip-tab {
+            position: absolute; top: 10px; right: 10px; z-index: 100;
+            background: rgba(0,0,0,0.8); border: 1px solid #444; padding: 2px 6px;
+            font-size: 8px; border-radius: 3px; color: #aaa; cursor: pointer;
+        }
+        .flip-tab:hover { color: #fff; background: #000; }
+
+        /* Router Elements Matrix Profiles */
+        .router-wrapper {
+            position: absolute;
+            width: 120px;
+            height: 90px;
+            background: #181818;
+            border: 2px solid #333;
+            border-radius: 6px;
+            padding: 8px;
+            font-size: 10px;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.8);
+            cursor: move;
+            z-index: 4;
+        }
+        .router-antenna { position: absolute; top: -15px; width: 3px; height: 15px; background: #444; }
+        .router-antenna.a1 { left: 20px; }
+        .router-antenna.a2 { right: 20px; }
+        .router-led { width: 5px; height: 5px; background: #00ff00; border-radius: 50%; display: inline-block; margin-right: 4px; }
+
+        /* Drawing Box Marquee Infrastructure */
+        #selection-marquee { position: absolute; border: 1px dashed #ffcc00; background: rgba(255, 204, 0, 0.15); pointer-events: none; display: none; z-index: 1000; }
+        .selected-group-node { box-shadow: 0 0 0 2px #ffcc00 !important; }
+    </style>
+</head>
+<body>
+    <div id="control-panel">
+        <div class="panel-section" id="sys-controls">
+            <h3>System Controls</h3>
+            <div style="display: flex; flex-direction: column; gap: 4px; overflow-y:auto; flex-grow:1;">
+                <div>
+                    <label style="font-size:9px; color:var(--text-muted)">CHASSIS TYPE:</label>
+                    <select id="spawn-model" style="width:100%; margin-top:1px;" onchange="UiEngine.handleModelChange()">
+                        <option value="m-5">Model 5 (Legacy Metal)</option>
+                        <option value="m-5c">Model 5c (Polycarbonate)</option>
+                        <option value="m-6">Model 6 (Slim Rounded Curve)</option>
+                        <option value="m-7">Model 7 (Compact)</option>
+                        <option value="m-8">Model 8 (Glass-Back)</option>
+                        <option value="m-8p">Model 8 Plus (Large Glass)</option>
+                        <option value="m-x">Model X (Dynamic Screen)</option>
+                        <option value="m-11">Model 11 (Dual Pro Square)</option>
+                        <option value="m-12">Model 12 (Flat Edge Chassis)</option>
+                        <option value="m-13">Model 13 (Diagonal Dual Lens)</option>
+                        <option value="v-p1">V-Brand Prime 1 (Classic Style)</option>
+                        <option value="v-p3">V-Brand Prime 3 (Two Tone Finish)</option>
+                        <option value="v-p6">V-Brand Prime 6 (Horizontal Camera Bar)</option>
+                        <option value="v-p8">V-Brand Prime 8 (Sleek Metal Strip)</option>
+                        <option value="v-pFold1">V-Brand Fold 1 (Wide Dual View)</option>
+                        <option value="v-pFold2">V-Brand Fold 2 (Thin Bezel Layout)</option>
+                        <option value="v-p10">V-Brand Prime 10 (Next-Gen Concept)</option>
+                        <option value="v-p10XL">V-Brand Prime 10 XL (Max Screen Concept)</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="font-size:9px; color:var(--text-muted)">SHELL FINISH / COLOR:</label>
+                    <select id="spawn-color" style="width:100%; margin-top:1px;">
+                        </select>
+                </div>
+                <div style="display:flex; gap:4px; margin-top:2px;">
+                    <button onclick="Workspace.spawnDevice()" style="flex-grow:1;">+ SPAWN PHONE</button>
+                    <button onclick="Workspace.spawnRouter()">+ ROUTER</button>
+                </div>
+                <div style="display:flex; gap:4px; align-items:center; justify-content:space-between; margin-top:2px;">
+                    <span style="font-size:9px; color:var(--text-muted)">GRID ZOOM:</span>
+                    <div style="display:flex; gap:2px;">
+                        <button onclick="Workspace.adjustZoom(0.1)">IN</button>
+                        <button onclick="Workspace.adjustZoom(-0.1)">OUT</button>
+                        <button onclick="Workspace.resetZoom()">1:1</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="panel-section" id="sim-factory">
+            <h3>SIM Card Provisioning Factory</h3>
+            <div style="display: flex; flex-direction: column; gap: 6px; flex-grow:1; justify-content:center;">
+                <div class="utility-row">
+                    <input type="text" id="sim-msisdn" placeholder="Custom Phone No." maxlength="10">
+                    <button onclick="NetworkHub.generateSim()">GENERATE</button>
+                </div>
+                <div style="font-size:10px; color:var(--text-muted); text-align:center;">
+                    Available Profiles: <span id="sim-count-hud" style="color:#fff;">0</span> Active Lines
+                </div>
+            </div>
+        </div>
+        <div class="panel-section" id="network-logger">
+            <h3>Diagnostic Packet Stream Logger</h3>
+            <div class="log-stream" id="log-anchor">
+                <div class="log-entry">[SYSTEM] Signaling Matrix Base initialized. Ready for operations.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="workspace-container">
+        <div id="workspace-canvas">
+            </div>
+        <div id="selection-marquee"></div>
+    </div>
+
+    <script>
+        // System Wide Vector Waveforms and Pattern Models
+        const SVGLibrary = {
+            abstractWaves: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="600" viewBox="0 0 300 600"><rect width="300" height="600" fill="%230f141d"/><path d="M0,200 Q75,150 150,200 T300,200 L300,600 L0,600 Z" fill="%231a233a" opacity="0.6"/><path d="M0,350 Q75,300 150,350 T300,350 L300,600 L0,600 Z" fill="%232e3f61" opacity="0.4"/></svg>`,
+            geometricGrid: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="600" viewBox="0 0 300 600"><rect width="300" height="600" fill="%23121212"/><g stroke="%23222" stroke-width="1"><line x1="0" y1="100" x2="300" y2="100"/><line x1="0" y1="200" x2="300" y2="200"/><line x1="0" y1="300" x2="300" y2="300"/><line x1="0" y1="400" x2="300" y2="400"/><line x1="0" y1="500" x2="300" y2="500"/><line x1="100" y1="0" x2="100" y2="600"/><line x1="200" y1="0" x2="200" y2="600"/></g><circle cx="150" cy="300" r="80" fill="none" stroke="%23333" stroke-width="2"/></svg>`,
+            industrialNeo: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="600" viewBox="0 0 300 600"><rect width="300" height="600" fill="%231a1a1a"/><path d="M0,0 L300,300 L300,330 L0,30" fill="%23262626"/><path d="M0,570 L300,270 L300,300 L0,600" fill="%23262626"/><circle cx="50" cy="80" r="2" fill="%23ffcc00"/><circle cx="250" cy="520" r="2" fill="%23ffcc00"/></svg>`,
+            vMaterialLines: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="300" height="600" viewBox="0 0 300 600"><rect width="300" height="600" fill="%23211f24"/><circle cx="150" cy="150" r="130" fill="%23312e37" opacity="0.5"/><path d="M-50,450 C50,400 100,550 350,400 L350,600 L-50,600 Z" fill="%234a4458" opacity="0.3"/></svg>`
+        };
+
+        const ChatBackgrounds = {
+            classicDark: `linear-gradient(180deg, #050505 0%, #0f0f14 100%)`,
+            gridPattern: `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><rect width="20" height="20" fill="%23050505"/><rect width="20" height="20" fill="none" stroke="%23111" stroke-width="1"/></svg>')`,
+            warmTint: `linear-gradient(135deg, #140f0f 0%, #0a0808 100%)`
+        };
+
+        const ModelsConfig = {
+            "m-5": { front: "black", colors: ["matte-black", "industrial-gray", "monochrome-white", "rose-gold"] },
+            "m-5c": { front: "black", colors: ["neon-blue", "lime-green", "coral-pink", "canary-yellow"] },
+            "m-6": { front: "white", colors: ["space-gray", "gold", "silver"] },
+            "m-7": { front: "black", colors: ["matte-black", "silver", "gold", "product-red"] },
+            "m-8": { front: "black", colors: ["space-gray", "silver", "gold", "product-red"] },
+            "m-8p": { front: "white", colors: ["space-gray", "silver", "gold"] },
+            "m-x": { front: "black", colors: ["space-gray", "silver"] },
+            "m-11": { front: "black", colors: ["space-gray", "silver", "gold", "purple", "mint-green", "product-red"] },
+            "m-12": { front: "black", colors: ["matte-black", "silver", "deep-blue", "mint", "product-red"] },
+            "m-13": { front: "black", colors: ["midnight", "starlight", "deep-blue", "pink", "product-red"] },
+            // V-Brand Variants Configurations
+            "v-p1": { front: "black", colors: ["quite-black", "very-silver"] },
+            "v-p3": { front: "black", colors: ["clearly-white", "not-pink"] },
+            "v-p6": { front: "black", colors: ["stormy-black", "sorta-seafoam"] },
+            "v-p8": { front: "black", colors: ["hazel", "obsidian", "rose"] },
+            "v-pFold1": { front: "black", colors: ["obsidian", "porcelain"] },
+            "v-pFold2": { front: "black", colors: ["obsidian", "porcelain"] },
+            "v-p10": { front: "black", colors: ["obsidian", "porcelain", "bay-blue"] },
+            "v-p10XL": { front: "black", colors: ["obsidian", "porcelain", "bay-blue"] }
+        };
+
+        // Network Signal Hub State Manager
+        const NetworkHub = {
+            simRegistry: new Map(),
+            activeConnections: new Map(),
+            socialPosts: [],
+            socialMessages: [],
+
+            init() {
+                this.generateSystemProfiles();
+                this.loadDefaultSocialFeed();
+            },
+
+            generateSystemProfiles() {
+                const sampleLines = ["4155550192", "2125550143", "3105550188"];
+                sampleLines.forEach(num => {
+                    this.simRegistry.set(num, { msisdn: num, deviceId: null, label: 'Carrier Line Pool' });
+                });
+                this.refreshHudCount();
+            },
+
+            loadDefaultSocialFeed() {
+                this.socialPosts = [
+                    { sender: "@matrix_ops", content: "Core structural framework upgrades complete." },
+                    { sender: "@chassis_dev", content: "Flat edge and horizontal camera arrays deployed." }
+                ];
+            },
+
+            generateSim() {
+                const input = document.getElementById('sim-msisdn');
+                let num = input.value.replace(/\D/g, '');
+                if(num.length !== 10) {
+                    num = Math.floor(1000000000 + Math.random() * 9000000000).toString();
+                }
+                if(this.simRegistry.has(num)) {
+                    UiEngine.log(`[SIM] Active allocation conflict for: ${num}`);
+                    return;
+                }
+                this.simRegistry.set(num, { msisdn: num, deviceId: null, label: 'Provisioned Wireline' });
+                UiEngine.log(`[FACTORY] Provisioned SIM Card Line: +1${num}`);
+                input.value = '';
+                this.refreshHudCount();
+                Workspace.broadcastSimLists();
+            },
+
+            refreshHudCount() {
+                document.getElementById('sim-count-hud').innerText = this.simRegistry.size;
+            }
+        };
+
+        // Workspace Engine Canvas Coordinator
+        const Workspace = {
+            devices: new Map(),
+            routers: new Map(),
+            zoom: 1.0,
+            panX: 0,
+            panY: 0,
+            isDraggingCanvas: false,
+            startX: 0,
+            startY: 0,
+            idCounter: 0,
+
+            init() {
+                const container = document.getElementById('workspace-container');
+                const canvas = document.getElementById('workspace-canvas');
+                
+                // Set structural initial point
+                this.panX = 100;
+                this.panY = 100;
+                this.updateTransform();
+
+                container.addEventListener('mousedown', (e) => {
+                    if(e.target === container || e.target === canvas) {
+                        this.isDraggingCanvas = true;
+                        container.style.cursor = 'grabbing';
+                        this.startX = e.clientX - this.panX;
+                        this.startY = e.clientY - this.panY;
+                    }
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if(this.isDraggingCanvas) {
+                        this.panX = e.clientX - this.startX;
+                        this.panY = e.clientY - this.startY;
+                        this.updateTransform();
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    this.isDraggingCanvas = false;
+                    container.style.cursor = 'grab';
+                });
+
+                UiEngine.handleModelChange();
+                this.broadcastSimLists();
+            },
+
+            updateTransform() {
+                const canvas = document.getElementById('workspace-canvas');
+                canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
+            },
+
+            adjustZoom(delta) {
+                this.zoom = Math.max(0.4, Math.min(2.0, this.zoom + delta));
+                this.updateTransform();
+            },
+
+            resetZoom() {
+                this.zoom = 1.0;
+                this.updateTransform();
+            },
+
+            spawnDevice() {
+                this.idCounter++;
+                const id = `dev-${this.idCounter}`;
+                const model = document.getElementById('spawn-model').value;
+                const color = document.getElementById('spawn-color').value;
+                const config = ModelsConfig[model] || { front: "black" };
+
+                const instance = new PhoneDevice(id, model, color, config.front);
+                this.devices.set(id, instance);
+                UiEngine.log(`[WORKSPACE] Telephony Instance Spawned: ${id} [${model.toUpperCase()}]`);
+            },
+
+            spawnRouter() {
+                this.idCounter++;
+                const id = `rtr-${this.idCounter}`;
+                const node = document.createElement('div');
+                node.className = 'router-wrapper';
+                node.id = id;
+                node.style.left = `${Math.abs(this.panX) + 200 + Math.random()*100}px`;
+                node.style.top = `${Math.abs(this.panY) + 100 + Math.random()*100}px`;
+                
+                node.innerHTML = `
+                    <div class="router-antenna a1"></div>
+                    <div class="router-antenna a2"></div>
+                    <div><span class="router-led"></span><b>GATEWAY ROUTER</b></div>
+                    <div style="color:#666; font-size:8px; margin-top:4px;">ID: ${id}</div>
+                    <div style="margin-top:8px; font-size:9px;">SSID: NetSimulator_RF</div>
+                `;
+
+                UiEngine.makeDraggable(node, 'router');
+                document.getElementById('workspace-canvas').appendChild(node);
+                this.routers.set(id, { id: id, element: node });
+                UiEngine.log(`[MATRIX] Active Access Node Created: ${id}`);
+            },
+
+            broadcastSimLists() {
+                this.devices.forEach(dev => dev.updateSimSelectionTray());
+            }
+        };
+
+        // UI Transformation Engine Controller
+        const UiEngine = {
+            handleModelChange() {
+                const model = document.getElementById('spawn-model').value;
+                const colorSelect = document.getElementById('spawn-color');
+                colorSelect.innerHTML = '';
+                
+                const config = ModelsConfig[model];
+                if(config && config.colors) {
+                    config.colors.forEach(clr => {
+                        const opt = document.createElement('option');
+                        opt.value = clr;
+                        opt.innerText = clr.replace('-', ' ').toUpperCase();
+                        colorSelect.appendChild(opt);
+                    });
+                }
+            },
+
+            log(text) {
+                const anchor = document.getElementById('log-anchor');
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerText = `[${new Date().toLocaleTimeString()}] ${text}`;
+                anchor.appendChild(entry);
+                anchor.scrollTop = anchor.scrollHeight;
+            },
+
+            makeDraggable(element, type) {
+                let currentX = 0, currentY = 0, initialX = 0, initialY = 0;
+                
+                element.addEventListener('mousedown', (e) => {
+                    if(e.target.closest('button, select, input, .app-body, .launcher-grid, .short-container')) return;
+                    e.preventDefault();
+                    initialX = e.clientX - element.offsetLeft;
+                    initialY = e.clientY - element.offsetTop;
+                    
+                    const moveHandler = (ev) => {
+                        currentX = ev.clientX - initialX;
+                        currentY = ev.clientY - initialY;
+                        element.style.left = `${currentX}px`;
+                        element.style.top = `${currentY}px`;
+                        
+                        if(type === 'phone') {
+                            const devInstance = Workspace.devices.get(element.id);
+                            if(devInstance) devInstance.updateSpatialHud();
+                        }
+                    };
+                    
+                    const upHandler = () => {
+                        window.removeEventListener('mousemove', moveHandler);
+                        window.removeEventListener('mouseup', upHandler);
+                    };
+                    
+                    window.addEventListener('mousemove', moveHandler);
+                    window.addEventListener('mouseup', upHandler);
+                });
+            }
+        };
+
+        // Device Instance Object Oriented Structure
+        class PhoneDevice {
+            constructor(id, model, color, frontTheme) {
+                this.id = id;
+                this.model = model;
+                this.color = color;
+                this.frontTheme = frontTheme;
+                this.activeMsisdn = null;
+                this.isFlipped = false;
+                this.activeSocialUser = null;
+
+                // Personalized configuration data models
+                this.contacts = []; // Contact objects: { name: '', number: '', monogram: '' }
+                this.currentChatBackground = ChatBackgrounds.classicDark;
+                this.currentWallpaper = this.getDefaultModelWallpaper();
+
+                // UI references elements
+                this.domElement = null;
+                this.buildChassisNode();
+            }
+
+            isVos() {
+                return this.model.startsWith('v-');
+            }
+
+            getDefaultModelWallpaper() {
+                if (this.isVos()) return SVGLibrary.vMaterialLines;
+                if (this.model === 'm-12') return SVGLibrary.abstractWaves;
+                if (this.model === 'm-13') return SVGLibrary.geometricGrid;
+                return SVGLibrary.industrialNeo;
+            }
+
+            buildChassisNode() {
+                const wrapper = document.createElement('div');
+                wrapper.className = `phone-wrapper ${this.model}`;
+                wrapper.id = this.id;
+                wrapper.style.left = `${Math.abs(Workspace.panX) + 50 + Math.random()*120}px`;
+                wrapper.style.top = `${Math.abs(Workspace.panY) + 50 + Math.random()*120}px`;
+
+                const card = document.createElement('div');
+                card.className = 'phone-card';
+                card.setAttribute('data-color', this.color);
+                card.setAttribute('data-front-theme', this.frontTheme);
+
+                // Front Chassis Construction
+                const front = document.createElement('div');
+                front.className = 'phone-face phone-front';
+                if (this.isVos()) front.classList.add('vos-theme');
+
+                let topBezelHtml = `<div class="top-bezel"><div class="speaker-grille"></div><div class="front-cam"></div></div>`;
+                if(this.model === 'm-x' || this.model === 'm-11' || this.model === 'm-12' || this.model === 'm-13') {
+                    topBezelHtml = `<div class="top-bezel"><div class="notch"><div class="speaker-grille"></div><div class="front-cam"></div></div></div>`;
+                } else if (this.isVos()) {
+                    topBezelHtml = `<div class="top-bezel"><div class="v-hole"></div></div>`;
+                }
+
+                let bottomBezelHtml = `<div class="bottom-bezel"><div class="home-button"></div></div>`;
+                if(this.model === 'm-x' || this.model === 'm-11' || this.model === 'm-12' || this.model === 'm-13' || this.isVos()) {
+                    bottomBezelHtml = '';
+                }
+
+                front.innerHTML = `
+                    <div class="flip-tab" onclick="Workspace.devices.get('${this.id}').toggleFlip()">FLIP REAR</div>
+                    ${topBezelHtml}
+                    <div class="screen" style="background-image: url('${this.currentWallpaper}');">
+                        <div class="status-bar">
+                            <div class="status-left"><span class="clock-hud">12:00</span></div>
+                            <div class="status-right"><span class="line-status">NO SIM</span> 📶 🔋</div>
+                        </div>
+                        <div class="app-space">
+                            <div class="launcher-grid active" id="${this.id}-launcher">
+                                <div class="app-icon" onclick="Workspace.devices.get('${this.id}').openApp('phone')"><span>📞</span>Phone</div>
+                                <div class="app-icon" onclick="Workspace.devices.get('${this.id}').openApp('social')"><span>🌐</span>Social</div>
+                                <div class="app-icon" onclick="Workspace.devices.get('${this.id}').openApp('settings')"><span>⚙️</span>Settings</div>
+                                <div class="app-icon" onclick="Workspace.devices.get('${this.id}').openApp('contacts')"><span>👤</span>Contacts</div>
+                            </div>
+
+                            ${this.getPhoneAppHtml()}
+                            ${this.getSocialAppHtml()}
+                            ${this.getSettingsAppHtml()}
+                            ${this.getContactsAppHtml()}
+                        </div>
+                        <div class="home-bar" onclick="Workspace.devices.get('${this.id}').minimizeApps()"></div>
+                    </div>
+                    ${bottomBezelHtml}
+                `;
+
+                // Back Chassis Construction
+                const back = document.createElement('div');
+                back.className = 'phone-face phone-back';
+                
+                let cameraLenses = '<div class="lens"></div>';
+                if(this.model === 'm-8p') cameraLenses = '<div class="lens"></div><div class="lens"></div>';
+                if(this.model === 'm-x' || this.model === 'm-12') cameraLenses = '<div class="lens"></div><div class="lens"></div>';
+                if(this.model === 'm-13') cameraLenses = '<div class="lens"></div><div class="lens"></div>';
+                if(this.model === 'm-11') cameraLenses = '<div class="lens"></div><div class="lens"></div><div class="lens"></div>';
+                if(this.model === 'v-p6' || this.model === 'v-p8' || this.model === 'v-p10' || this.model === 'v-p10XL') cameraLenses = '<div class="lens"></div><div class="lens"></div>';
+                if(this.model === 'v-pFold1' || this.model === 'v-pFold2') cameraLenses = '<div class="lens"></div><div class="lens"></div><div class="lens"></div>';
+
+                back.innerHTML = `
+                    <div class="flip-tab" onclick="Workspace.devices.get('${this.id}').toggleFlip()">FLIP FRONT</div>
+                    <div class="antenna-line horiz-top"></div>
+                    <div class="cam-housing">${cameraLenses}</div>
+                    <div class="hardware-info">
+                        <b>${this.isVos() ? 'V-Brand' : 'Simulator Link'}</b><br>
+                        ${this.model.toUpperCase()}<br>
+                        ${this.color.toUpperCase()}
+                    </div>
+                    <div class="antenna-line horiz-bottom"></div>
+                `;
+
+                // Side tray SIM architecture
+                const tray = document.createElement('div');
+                tray.className = 'hardware-sim-tray-bracket';
+                tray.innerHTML = `
+                    <span class="side-tray-icon">📇</span>
+                    <span class="side-tray-label">SIM Baseband Tray</span>
+                    <select class="side-sim-select" onchange="Workspace.devices.get('${this.id}').handleTraySimInsertion(this)"></select>
+                    <button class="side-sim-select" style="margin-bottom:0;" onclick="Workspace.devices.get('${this.id}').toggleTrayExpanded(event)">CLOSE</button>
+                `;
+                tray.addEventListener('click', (e) => {
+                    if(!tray.classList.contains('expanded')) {
+                        tray.classList.add('expanded');
+                    }
+                });
+
+                card.appendChild(front);
+                card.appendChild(back);
+                wrapper.appendChild(card);
+                wrapper.appendChild(tray);
+
+                // HUD Layer
+                const hud = document.createElement('div');
+                hud.className = 'spatial-hud';
+                wrapper.appendChild(hud);
+
+                UiEngine.makeDraggable(wrapper, 'phone');
+                document.getElementById('workspace-canvas').appendChild(wrapper);
+                this.domElement = wrapper;
+
+                this.updateSpatialHud();
+                this.updateClockLoop();
+                this.updateSimSelectionTray();
+            }
+
+            toggleTrayExpanded(e) {
+                e.stopPropagation();
+                const tray = this.domElement.querySelector('.hardware-sim-tray-bracket');
+                tray.classList.remove('expanded');
+            }
+
+            toggleFlip() {
+                this.isFlipped = !this.isFlipped;
+                if(this.isFlipped) this.domElement.classList.add('flipped');
+                else this.domElement.classList.remove('flipped');
+            }
+
+            updateSpatialHud() {
+                const hud = this.domElement.querySelector('.spatial-hud');
+                hud.innerHTML = `NODE: ${this.id}<br>LOC: X:${this.domElement.offsetLeft} Y:${this.domElement.offsetTop}`;
+            }
+
+            updateClockLoop() {
+                const clock = this.domElement.querySelector('.clock-hud');
+                if(!clock) return;
+                const now = new Date();
+                clock.innerText = now.toTimeString().substring(0, 5);
+                setTimeout(() => this.updateClockLoop(), 30000);
+            }
+
+            updateSimSelectionTray() {
+                const select = this.domElement.querySelector('.side-sim-select');
+                if(!select) return;
+                select.innerHTML = '<option value="">-- NO SIM --</option>';
+                
+                NetworkHub.simRegistry.forEach((sim, num) => {
+                    if(!sim.deviceId || sim.deviceId === this.id) {
+                        const opt = document.createElement('option');
+                        opt.value = num;
+                        opt.innerText = `+1${num} ${sim.deviceId ? '[HERE]' : ''}`;
+                        if(this.activeMsisdn === num) opt.selected = true;
+                        select.appendChild(opt);
+                    }
+                });
+            }
+
+            handleTraySimInsertion(selectNode) {
+                const val = selectNode.value;
+                if(this.activeMsisdn) {
+                    const oldSim = NetworkHub.simRegistry.get(this.activeMsisdn);
+                    if(oldSim) oldSim.deviceId = null;
+                }
+
+                if(!val) {
+                    this.activeMsisdn = null;
+                    this.domElement.querySelector('.line-status').innerText = 'NO SIM';
+                    UiEngine.log(`[BASEBAND] ${this.id} removed structural SIM card.`);
+                } else {
+                    this.activeMsisdn = val;
+                    const newSim = NetworkHub.simRegistry.get(val);
+                    newSim.deviceId = this.id;
+                    this.domElement.querySelector('.line-status').innerText = `+1${val}`;
+                    UiEngine.log(`[BASEBAND] ${this.id} registered line line connection to: +1${val}`);
+                }
+                Workspace.broadcastSimLists();
+            }
+
+            openApp(appName) {
+                const launcher = this.domElement.querySelector('.launcher-grid');
+                launcher.classList.remove('active');
+                
+                const containers = this.domElement.querySelectorAll('.app-view');
+                containers.forEach(c => c.classList.remove('active'));
+
+                const activeApp = this.domElement.querySelector(`.app-view.${appName}-app`);
+                if(activeApp) {
+                    activeApp.classList.add('active');
+                    if (appName === 'social') this.renderSocialAppView();
+                    if (appName === 'contacts') this.renderContactsListView();
+                    if (appName === 'phone') this.refreshChatSubView();
+                }
+            }
+
+            minimizeApps() {
+                const launcher = this.domElement.querySelector('.launcher-grid');
+                launcher.classList.add('active');
+                const containers = this.domElement.querySelectorAll('.app-view');
+                containers.forEach(c => c.classList.remove('active'));
+            }
+
+            // ==========================================
+            // APPLICATIONS SPECIFIC IMPL
+            // ==========================================
+
+            getPhoneAppHtml() {
+                return `
+                    <div class="app-view phone-app">
+                        <div class="app-header"><span>📞 Baseband Dialer</span><button onclick="Workspace.devices.get('${this.id}').minimizeApps()">X</button></div>
+                        <div class="app-body">
+                            <div class="dialer-output" id="${this.id}-dialer-screen"></div>
+                            <div class="dialer-pad">
+                                ${[1,2,3,4,5,6,7,8,9,'*',0,'#'].map(v => `<div class="dial-btn" onclick="Workspace.devices.get('${this.id}').dialPress('${v}')">${v}</div>`).join('')}
+                            </div>
+                            <div class="call-actions">
+                                <button style="background:#1b331b; flex-grow:1;" onclick="Workspace.devices.get('${this.id}').initiateCall()">DIAL NETWORK</button>
+                                <button style="background:#331b1b;" onclick="Workspace.devices.get('${this.id}').clearDialer()">CLR</button>
+                            </div>
+
+                            <div style="margin-top:10px; border-top:1px solid #222; padding-top:6px;">
+                                <b>Device Core Messages</b>
+                                <div class="chat-stream" id="${this.id}-chat-stream"></div>
+                                <div class="utility-row">
+                                    <input type="text" id="${this.id}-msg-input" placeholder="Message content...">
+                                    <button onclick="Workspace.devices.get('${this.id}').sendSmsMessage()">SEND</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            dialPress(val) {
+                const screen = this.domElement.querySelector(`#${this.id}-dialer-screen`);
+                if(screen.innerText.length < 10) screen.innerText += val;
+            }
+
+            clearDialer() {
+                this.domElement.querySelector(`#${this.id}-dialer-screen`).innerText = '';
+            }
+
+            initiateCall() {
+                const target = this.domElement.querySelector(`#${this.id}-dialer-screen`).innerText;
+                UiEngine.log(`[DIALER] ${this.id} attempting outbound signal to target: ${target}`);
+            }
+
+            refreshChatSubView() {
+                const stream = this.domElement.querySelector(`#${this.id}-chat-stream`);
+                if(!stream) return;
+                stream.style.backgroundImage = this.currentChatBackground;
+                stream.innerHTML = '';
+
+                if(!this.activeMsisdn) {
+                    stream.innerHTML = '<div style="color:#666; text-align:center; padding-top:10px;">Insert SIM line first</div>';
+                    return;
+                }
+
+                NetworkHub.socialMessages.forEach(msg => {
+                    if((msg.from === this.activeMsisdn && msg.to === this.domElement.querySelector(`#${this.id}-dialer-screen`).innerText) ||
+                       (msg.to === this.activeMsisdn && msg.from === this.domElement.querySelector(`#${this.id}-dialer-screen`).innerText)) {
+                        
+                        const isSent = msg.from === this.activeMsisdn;
+                        const bubble = document.createElement('div');
+                        bubble.classList.add('chat-bubble');
+
+                        if(isSent) {
+                            bubble.classList.add('sent');
+                            if (this.isVos()) {
+                                bubble.classList.add('vos-sent');
+                            }
+                        } else {
+                            bubble.classList.add('rcvd');
+                            const senderIsVos = msg.fromIsVos;
+                            if (this.isVos()) {
+                                // On android-like phones, incoming bubbles remain fallback styling or differentiated
+                            } else {
+                                // For regular phones
+                                if (senderIsVos) {
+                                    bubble.classList.add('from-vos'); // lime green
+                                } else {
+                                    bubble.classList.add('from-ios'); // blue
+                                }
+                            }
+                        }
+
+                        bubble.innerText = msg.text;
+                        stream.appendChild(bubble);
+                    }
+                });
+                stream.scrollTop = stream.scrollHeight;
+            }
+
+            sendSmsMessage() {
+                const input = this.domElement.querySelector(`#${this.id}-msg-input`);
+                const target = this.domElement.querySelector(`#${this.id}-dialer-screen`).innerText;
+                if(!input.value || !target || !this.activeMsisdn) return;
+
+                NetworkHub.socialMessages.push({
+                    from: this.activeMsisdn,
+                    to: target,
+                    text: input.value,
+                    fromIsVos: this.isVos()
+                });
+
+                input.value = '';
+                this.refreshChatSubView();
+
+                // Sync companion active screens
+                Workspace.devices.forEach(d => {
+                    if(d.activeMsisdn === target) d.refreshChatSubView();
+                });
+            }
+
+            // ==========================================
+            // CONTACTS APP SUBSYSTEM
+            // ==========================================
+            getContactsAppHtml() {
+                return `
+                    <div class="app-view contacts-app">
+                        <div class="app-header"><span>👤 Device Contacts</span><button onclick="Workspace.devices.get('${this.id}').minimizeApps()">X</button></div>
+                        <div class="app-body">
+                            <div class="utility-row">
+                                <input type="text" id="${this.id}-contact-name" placeholder="Custom Name" style="width:50px;">
+                                <input type="text" id="${this.id}-contact-phone" placeholder="Phone No." style="width:50px;">
+                                <input type="text" id="${this.id}-contact-mono" placeholder="I.I." maxlength="2" style="width:25px;">
+                                <button onclick="Workspace.devices.get('${this.id}').addContactRecord()">+</button>
+                            </div>
+                            <div id="${this.id}-contacts-list" style="margin-top:6px; display:flex; flex-direction:column; gap:4px;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            addContactRecord() {
+                const nameInp = this.domElement.querySelector(`#${this.id}-contact-name`);
+                const phoneInp = this.domElement.querySelector(`#${this.id}-contact-phone`);
+                const monoInp = this.domElement.querySelector(`#${this.id}-contact-mono`);
+
+                if(!nameInp.value || !phoneInp.value) return;
+                
+                let monogram = monoInp.value || nameInp.value.substring(0, 2);
+                this.contacts.push({
+                    name: nameInp.value,
+                    number: phoneInp.value.replace(/\D/g, ''),
+                    monogram: monogram
+                });
+
+                nameInp.value = '';
+                phoneInp.value = '';
+                monoInp.value = '';
+                this.renderContactsListView();
+            }
+
+            renderContactsListView() {
+                const list = this.domElement.querySelector(`#${this.id}-contacts-list`);
+                if(!list) return;
+                list.innerHTML = '';
+
+                if(this.contacts.length === 0) {
+                    list.innerHTML = '<div style="color:#555; text-align:center; padding-top:10px;">Empty Directory</div>';
+                    return;
+                }
+
+                this.contacts.forEach(c => {
+                    const row = document.createElement('div');
+                    row.className = 'contact-item';
+                    row.innerHTML = `
+                        <div class="contact-monogram">${c.monogram}</div>
+                        <div style="flex-grow:1;">
+                            <b>${c.name}</b><br>
+                            <span style="font-size:8px; color:#777;">+1${c.number}</span>
+                        </div>
+                        <button onclick="Workspace.devices.get('${this.id}').shortcutContactAction('${c.number}')">💬</button>
+                    `;
+                    list.appendChild(row);
+                });
+            }
+
+            shortcutContactAction(num) {
+                this.openApp('phone');
+                this.domElement.querySelector(`#${this.id}-dialer-screen`).innerText = num;
+                this.refreshChatSubView();
+            }
+
+            // ==========================================
+            // SOCIAL MEDIA APP SUBSYSTEM
+            // ==========================================
+            getSocialAppHtml() {
+                return `
+                    <div class="app-view social-app">
+                        <div class="app-header"><span>🌐 NetHub Social</span><button onclick="Workspace.devices.get('${this.id}').minimizeApps()">X</button></div>
+                        <div class="soc-acc-bar"></div>
+                        <div class="app-body" id="${this.id}-social-viewstack" style="padding:4px;">
+                            </div>
+                    </div>
+                `;
+            }
+
+            renderSocialAppView() {
+                const bar = this.domElement.querySelector('.soc-acc-bar');
+                const stack = this.domElement.querySelector(`#${this.id}-social-viewstack`);
+                if(!bar || !stack) return;
+
+                bar.innerHTML = '';
+                const handles = ['@brad_dev', '@matrix_user', '@sys_anon'];
+                handles.forEach(h => {
+                    const btn = document.createElement('div');
+                    btn.className = `mini-avatar ${this.activeSocialUser === h ? 'active' : ''}`;
+                    btn.innerText = h;
+                    btn.addEventListener('click', () => {
+                        this.activeSocialUser = h;
+                        this.renderSocialAppView();
+                    });
+                    bar.appendChild(btn);
+                });
+
+                if(!this.activeSocialUser) {
+                    stack.innerHTML = `
+                        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; text-align:center; padding:10px;">
+                            <span style="font-size:24px; margin-bottom:10px;">🔒</span>
+                            <b>Authentication Required</b>
+                            <p style="font-size:9px; color:#555; margin-top:4px;">Select a handle profile matrix header to unlock access.</p>
+                        </div>
+                    `;
+                } else {
+                    stack.innerHTML = `
+                        <div style="display:flex; flex-direction:column; gap:8px;">
+                            <div style="border:1px solid #222; padding:4px; background:#050505; border-radius:4px;">
+                                <b>Hub Instant Direct Messages</b>
+                                <div style="display:flex; gap:2px; margin-top:4px;">
+                                    <select id="${this.id}-soc-target" style="font-size:9px; padding:2px;">
+                                        <option value="@brad_dev">@brad_dev</option>
+                                        <option value="@matrix_user">@matrix_user</option>
+                                        <option value="@sys_anon">@sys_anon</option>
+                                    </select>
+                                    <input type="text" id="${this.id}-soc-msg-text" placeholder="Type DM..." style="font-size:9px; padding:2px; flex-grow:1;">
+                                    <button onclick="Workspace.devices.get('${this.id}').sendSocialDirectMessage()" style="font-size:9px; padding:2px 6px;">POST</button>
+                                </div>
+                                <div id="${this.id}-soc-dm-box" style="font-size:9px; max-height:50px; overflow-y:auto; margin-top:4px; color:#aaa;"></div>
+                            </div>
+
+                            <div>
+                                <b>Short Matrix Streams</b>
+                                <div class="short-container">
+                                    <div class="short-slide" style="background-image:linear-gradient(45deg, #1f0030, #001230);">
+                                        <div class="short-overlay"><b>@matrix_ops</b><br>Compiling structural parameters into workspace kernels. #dev #simulation</div>
+                                    </div>
+                                    <div class="short-slide" style="background-image:linear-gradient(135deg, #051c08, #1a1a00);">
+                                        <div class="short-overlay"><b>@chassis_dev</b><br>Testing fluid display frameworks inside modern simulation cells. #os #design</div>
+                                    </div>
+                                    <div class="short-slide" style="background-image:linear-gradient(225deg, #2b0303, #08001c);">
+                                        <div class="short-overlay"><b>@sys_anon</b><br>Infinite panning layout initialized across network workspace hubs. #grid</div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <b>Public Broadcast Network</b>
+                                <div class="utility-row" style="margin-top:4px;">
+                                    <input type="text" id="${this.id}-post-input" placeholder="Broadcast status...">
+                                    <button onclick="Workspace.devices.get('${this.id}').submitSocialPost()">POST</button>
+                                </div>
+                                <div class="soc-timeline" style="margin-top:6px;"></div>
+                            </div>
+                        </div>
+                    `;
+                    this.refreshSocialFeed();
+                    this.refreshSocialDms();
+                }
+            }
+
+            submitSocialPost() {
+                const input = this.domElement.querySelector(`#${this.id}-post-input`);
+                if(!input || !input.value) return;
+                NetworkHub.socialPosts.unshift({ sender: this.activeSocialUser, content: input.value });
+                input.value = '';
+                
+                Workspace.devices.forEach(d => {
+                    if(d.domElement.querySelector('.social-app').classList.contains('active')) {
+                        d.refreshSocialFeed();
+                    }
+                });
+            }
+
+            refreshSocialFeed() {
+                const timeline = this.domElement.querySelector('.soc-timeline');
+                if(!timeline) return;
+                timeline.innerHTML = '';
+                
+                NetworkHub.socialPosts.forEach(post => {
+                    const block = document.createElement('div');
+                    block.className = 'soc-post';
+                    block.innerHTML = `<div class="soc-handle">${post.sender}</div><div style="word-break:break-all;">${post.content}</div>`;
+                    timeline.appendChild(block);
+                });
+            }
+
+            sendSocialDirectMessage() {
+                const dest = this.domElement.querySelector(`#${this.id}-soc-target`).value;
+                const txt = this.domElement.querySelector(`#${this.id}-soc-msg-text`);
+                if(!txt || !txt.value) return;
+
+                NetworkHub.socialMessages.push({
+                    sender: this.activeSocialUser,
+                    receiver: dest,
+                    payload: txt.value
+                });
+                txt.value = '';
+
+                Workspace.devices.forEach(d => {
+                    if(d.domElement.querySelector('.social-app').classList.contains('active')) {
+                        d.refreshSocialDms();
+                    }
+                });
+            }
+
+            refreshSocialDms() {
+                const box = this.domElement.querySelector(`#${this.id}-soc-dm-box`);
+                if(!box) return;
+                box.innerHTML = '';
+
+                NetworkHub.socialMessages.forEach(m => {
+                    if(m.payload && ((m.sender === this.activeSocialUser) || (m.receiver === this.activeSocialUser))) {
+                        const row = document.createElement('div');
+                        row.style.borderBottom = '1px solid #111';
+                        row.style.padding = '2px 0';
+                        row.innerHTML = `<b>${m.sender} ➔ ${m.receiver}:</b> ${m.payload}`;
+                        box.appendChild(row);
+                    }
+                });
+                box.scrollTop = box.scrollHeight;
+            }
+
+            // ==========================================
+            // SETTINGS APP SUBSYSTEM
+            // ==========================================
+            getSettingsAppHtml() {
+                return `
+                    <div class="app-view settings-app">
+                        <div class="app-header"><span>⚙️ Core Settings</span><button onclick="Workspace.devices.get('${this.id}').minimizeApps()">X</button></div>
+                        <div class="app-body" style="gap:8px;">
+                            <div>
+                                <b>SVG System Wallpaper Engine</b>
+                                <select id="${this.id}-wp-sel" style="width:100%; margin-top:4px;" onchange="Workspace.devices.get('${this.id}').changeDeviceWallpaper(this.value)">
+                                    <option value="default">Model Archetype Standard</option>
+                                    <option value="abstractWaves">Abstract Waves (SVG Pattern)</option>
+                                    <option value="geometricGrid">Geometric Grid (SVG Pattern)</option>
+                                    <option value="industrialNeo">Industrial Minimalist (SVG Pattern)</option>
+                                    <option value="vMaterialLines">Material Vector Variant (SVG Pattern)</option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <b>Chat Interface Graphics</b>
+                                <select id="${this.id}-bg-sel" style="width:100%; margin-top:4px;" onchange="Workspace.devices.get('${this.id}').changeChatBackground(this.value)">
+                                    <option value="classicDark">Classic Monolithic Dark</option>
+                                    <option value="gridPattern">Terminal Wiremesh Grid</option>
+                                    <option value="warmTint">Industrial Thermal Tint</option>
+                                </select>
+                            </div>
+                            <div style="font-size:8px; color:#555; text-align:center; margin-top:20px;">
+                                Hardware Revision Protocol v4.0.2
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            changeDeviceWallpaper(key) {
+                if(key === 'default') {
+                    this.currentWallpaper = this.getDefaultModelWallpaper();
+                } else {
+                    this.currentWallpaper = SVGLibrary[key];
+                }
+                this.domElement.querySelector('.screen').style.backgroundImage = `url('${this.currentWallpaper}')`;
+                UiEngine.log(`[SETTINGS] Updated SVG wave pattern wallpaper on device: ${this.id}`);
+            }
+
+            changeChatBackground(key) {
+                this.currentChatBackground = ChatBackgrounds[key];
+                this.refreshChatSubView();
+                UiEngine.log(`[SETTINGS] Reconfigured thread stream texture matrix on device: ${this.id}`);
+            }
+        }
+
+        // Initialize Simulator Workspace components on execution load
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+        };
+    </script>
+</body>
+</html>

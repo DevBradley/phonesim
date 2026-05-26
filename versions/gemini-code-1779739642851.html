@@ -1,0 +1,1808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Device Workspace Simulation</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #121212;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #e0e0e0;
+            --text-muted: #777777;
+            --accent: #555555;
+            --accent-active: #aaaaaa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Diagnostics Control Panel */
+        #control-panel {
+            height: 180px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            z-index: 110;
+            padding: 10px;
+            gap: 15px;
+        }
+
+        .panel-section {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+
+        .panel-section h3 {
+            font-size: 11px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 3px;
+        }
+
+        #sys-controls { width: 220px; }
+        #sim-factory { width: 300px; }
+        #network-logger { flex-grow: 1; }
+
+        .log-stream {
+            font-size: 11px;
+            color: #00ff00;
+            overflow-y: auto;
+            flex-grow: 1;
+            background: #050505;
+            padding: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+        }
+
+        .log-entry { margin-bottom: 3px; white-space: nowrap; }
+
+        button, select, input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 5px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        button:hover {
+            background: var(--border-color);
+            border-color: var(--text-muted);
+        }
+
+        input { cursor: text; }
+
+        /* Mode Selection / Tool Controls */
+        .workspace-tools {
+            display: flex;
+            gap: 5px;
+            margin-top: 5px;
+        }
+        .tool-btn {
+            background: #151515;
+            border: 1px solid #333;
+        }
+        .tool-btn.active {
+            background: #333;
+            border-color: #fff;
+        }
+
+        /* Workspace Grid (Infinite Pan Canvas) */
+        #workspace-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+
+        #workspace-container.pan-mode { cursor: grab; }
+        #workspace-container.pan-mode:active { cursor: grabbing; }
+        #workspace-container.select-mode { cursor: crosshair; }
+
+        #workspace-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5000px;
+            height: 5000px;
+            transform-origin: 0 0;
+        }
+
+        /* Selection Box overlay styling */
+        #selection-box {
+            position: absolute;
+            border: 1px dashed #ffffff;
+            background: rgba(255, 255, 255, 0.05);
+            pointer-events: none;
+            display: none;
+            z-index: 99;
+        }
+
+        /* Moving selection area container bounding outline */
+        .selected-group-outline {
+            position: absolute;
+            border: 1px dashed #ff9900;
+            background: rgba(255, 153, 0, 0.02);
+            pointer-events: auto;
+            cursor: move;
+            z-index: 95;
+        }
+
+        /* Router Node Hardware Blueprint */
+        .router-wrapper {
+            position: absolute;
+            width: 140px;
+            height: 100px;
+            background: #111;
+            border: 2px solid #333;
+            border-radius: 6px;
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 6px 15px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+        .router-wrapper.selected {
+            border-color: #ff9900 !important;
+        }
+        .router-header {
+            font-size: 10px;
+            font-weight: bold;
+            color: #aaa;
+            border-bottom: 1px solid #222;
+            padding-bottom: 3px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .router-body {
+            font-size: 9px;
+            color: var(--text-muted);
+            margin-top: 4px;
+            flex-grow: 1;
+        }
+        .router-lights {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .light {
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: #222;
+        }
+        .light.blink {
+            background: #00ff00;
+            animation: pulseLight 1s infinite alternate;
+        }
+        @keyframes pulseLight {
+            0% { opacity: 0.3; }
+            100% { opacity: 1; }
+        }
+
+        /* 3D Phone Chassis Styles */
+        .phone-wrapper {
+            position: absolute;
+            perspective: 1000px;
+            width: 260px;
+            height: 510px;
+            z-index: 20;
+        }
+        .phone-wrapper.selected .phone-card {
+            border-radius: 28px;
+            box-shadow: 0 0 0 2px #ff9900;
+        }
+
+        /* Model Scaling Layouts */
+        .phone-wrapper.m-7 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8 { width: 250px; height: 490px; }
+        .phone-wrapper.m-8-plus { width: 280px; height: 540px; }
+
+        .phone-card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+
+        .phone-wrapper.flipped .phone-card {
+            transform: rotateY(180deg);
+        }
+
+        .phone-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 28px;
+            border: 3px solid #333;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Front Face Architecture */
+        .phone-front {
+            background: #111111;
+            color: var(--text-main);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+        }
+
+        .m-7 .phone-front { border-color: #252525; background: #0d0d0d; }
+        .m-8 .phone-front { border-color: #444444; background: #121212; }
+        .m-8-plus .phone-front { border-color: #444444; background: #121212; }
+
+        /* System Bezels */
+        .top-bezel {
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .speaker-grille {
+            width: 45px;
+            height: 4px;
+            background: #222;
+            border-radius: 2px;
+        }
+        .front-cam {
+            width: 7px;
+            height: 7px;
+            background: #1a1a2e;
+            border-radius: 50%;
+            position: absolute;
+            left: 80px;
+        }
+
+        .bottom-bezel {
+            height: 45px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .home-button {
+            width: 34px;
+            height: 34px;
+            border: 1px solid #333;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        /* Screen Architecture */
+        .screen {
+            flex-grow: 1;
+            background: #000;
+            border: 1px solid #222;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .status-bar {
+            height: 18px;
+            background: rgba(8, 8, 8, 0.85);
+            font-size: 9px;
+            padding: 0 6px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(17, 17, 17, 0.5);
+            color: var(--text-muted);
+            z-index: 5;
+        }
+
+        .status-left, .status-right { display: flex; gap: 4px; align-items: center; }
+
+        .app-space {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* System App Containers */
+        .app-view {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9);
+            display: none;
+            flex-direction: column;
+            z-index: 2;
+        }
+        .app-view.active { display: flex; }
+        .app-view[data-app="launcher"] {
+            background: transparent;
+        }
+
+        .app-header {
+            height: 30px;
+            background: #0d0d0d;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .app-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+        }
+
+        /* OS Dock / Grid Launcher */
+        .launcher-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            padding: 15px;
+        }
+        .app-icon {
+            background: rgba(13, 13, 13, 0.85);
+            border: 1px solid var(--border-color);
+            height: 65px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 10px;
+            gap: 4px;
+            backdrop-filter: blur(4px);
+        }
+        .app-icon:hover { background: #151515; }
+        .app-icon span { font-size: 18px; }
+
+        /* Phone App Elements */
+        .dialer-output {
+            background: #050505;
+            border: 1px solid #1a1a1a;
+            padding: 6px;
+            text-align: right;
+            font-size: 16px;
+            margin-bottom: 8px;
+            min-height: 30px;
+            letter-spacing: 1px;
+        }
+        .dialer-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-bottom: 8px;
+        }
+        .dial-btn {
+            background: #0c0c0c;
+            border: 1px solid #1e1e1e;
+            padding: 8px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .call-actions { display: flex; gap: 5px; }
+
+        .inc-call-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+        .inc-call-overlay.active { display: flex; }
+
+        /* Messaging Subsystem */
+        .msg-threads { display: flex; flex-direction: column; gap: 4px; }
+        .thread-row {
+            padding: 6px; background: #090909; border: 1px solid #151515; cursor: pointer;
+        }
+        .chat-stream { flex-grow: 1; overflow-y: auto; background: #030303; border: 1px solid #111; padding: 4px; margin-bottom: 4px; }
+        .chat-bubble { max-width: 85%; padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; word-break: break-all;}
+        .chat-bubble.sent { background: #222; align-self: flex-end; }
+        .chat-bubble.rcvd { background: #0f1c0f; align-self: flex-start; border: 1px solid #1b331b; }
+
+        /* Social Network UI */
+        .soc-acc-bar {
+            display: flex; gap: 3px; background: #0a0a0a; padding: 4px; border-bottom: 1px solid #1a1a1a; overflow-x: auto;
+        }
+        .mini-avatar {
+            font-size: 9px; padding: 2px 4px; background: #151515; border: 1px solid #333; cursor: pointer; white-space: nowrap;
+        }
+        .mini-avatar.active { background: #333; color: #fff; }
+        .soc-post {
+            background: #0a0a0a; border: 1px solid #1a1a1a; padding: 6px; margin-bottom: 6px; border-radius: 2px;
+        }
+        .soc-handle { color: var(--text-muted); font-size: 10px; margin-bottom: 2px; }
+
+        /* Physical Back Face Architecture */
+        .phone-back {
+            background: #161616;
+            color: #888;
+            transform: rotateY(180deg);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7);
+            border-color: #222;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .m-7 .phone-back { background: #161616; }
+        .m-8 .phone-back { background: #1f1f1f; border-color: #2d2d2d; }
+        .m-8-plus .phone-back { background: #1f1f1f; border-color: #2d2d2d; }
+
+        .cam-housing {
+            background: #0a0a0a;
+            border: 2px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .m-7 .cam-housing, .m-8 .cam-housing {
+            width: 28px; height: 28px; border-radius: 50%; align-self: flex-start; margin-right: auto;
+        }
+        .m-8-plus .cam-housing {
+            width: 55px; height: 26px; border-radius: 14px; align-self: flex-start; margin-right: auto; gap: 6px; padding: 0 5px;
+        }
+        .lens { width: 10px; height: 10px; background: #05101a; border-radius: 50%; border: 1px solid #111; }
+
+        .hardware-info { text-align: center; font-size: 9px; color: #444; text-transform: uppercase; line-height: 14px; }
+
+        .sim-tray-slot {
+            width: 120px;
+            background: #0d0d0d;
+            border: 1px solid #333;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            cursor: pointer;
+            font-size: 10px;
+        }
+        .sim-tray-slot:hover { border-color: var(--text-muted); }
+
+        /* Window Overlay Utilitarian Elements */
+        .utility-row { display: flex; gap: 4px; margin-bottom: 4px; }
+        .utility-row input { flex-grow: 1; }
+        .flex-fill { flex-grow: 1; }
+        
+        /* Floating HUD metrics on devices */
+        .spatial-hud {
+            position: absolute; bottom: -35px; left: 0; width: 100%;
+            text-align: center; font-size: 10px; color: var(--text-muted);
+            pointer-events: none; line-height: 14px;
+        }
+
+        .flip-tab {
+            position: absolute; top: 10px; right: 10px; z-index: 100;
+            background: rgba(0,0,0,0.6); border: 1px solid #333; padding: 2px 5px;
+            font-size: 8px; border-radius: 3px; color: #aaa; cursor: pointer;
+        }
+
+        /* Mechanical Interaction Indicator for Side Sim Slot Click Overlay */
+        .sim-tray-side-clicker {
+            position: absolute;
+            left: -5px;
+            top: 140px;
+            width: 6px;
+            height: 30px;
+            background: #3a3a3a;
+            border: 1px solid #555;
+            border-radius: 2px 0 0 2px;
+            cursor: pointer;
+            z-index: 105;
+        }
+        .sim-tray-side-clicker:hover {
+            background: #ff9900;
+        }
+
+        /* Interactive Provisioning Selection Dropdown Node overlay */
+        .sim-floating-selector-panel {
+            position: absolute;
+            left: -155px;
+            top: 120px;
+            background: #111;
+            border: 1px solid #444;
+            padding: 6px;
+            border-radius: 4px;
+            display: none;
+            flex-direction: column;
+            gap: 4px;
+            z-index: 120;
+            width: 140px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.9);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="control-panel">
+        <div class="panel-section" id="sys-controls">
+            <h3>System Controls</h3>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <div>
+                    <label style="font-size:9px; color:var(--text-muted)">CHASSIS TYPE:</label>
+                    <select id="spawn-model" style="width:100%; margin-top:2px;">
+                        <option value="m-7">Model 7 (Compact)</option>
+                        <option value="m-8">Model 8 (Glass-Back)</option>
+                        <option value="m-8-plus">Model 8 Plus (Wide)</option>
+                    </select>
+                </div>
+                <button onclick="Workspace.spawnDevice()">+ SPAWN NODE</button>
+                <button onclick="Workspace.spawnRouter()" style="background:#112211;">+ SPAWN WIFI ROUTER</button>
+                
+                <div class="workspace-tools">
+                    <button class="tool-btn active" id="tool-pan" onclick="Workspace.setToolMode('pan')">PAN</button>
+                    <button class="tool-btn" id="tool-select" onclick="Workspace.setToolMode('select')">DRAW SELECT</button>
+                    <button class="tool-btn" onclick="Workspace.clearSelection()">CLR</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section" id="sim-factory">
+            <h3>SIM Card Provisioning Factory</h3>
+            <div style="display: flex; flex-direction: column; gap: 6px; flex-grow:1; justify-content:center;">
+                <div class="utility-row">
+                    <input type="text" id="sim-msisdn" placeholder="Custom Phone No." maxlength="10">
+                    <button onclick="NetworkHub.generateSim()">GENERATE</button>
+                </div>
+                <div style="font-size:10px; color:var(--text-muted); text-align:center;">Active Cards In Circulation: <span id="sim-count" style="color:var(--text-main)">0</span></div>
+                <div style="display:flex; justify-content:space-between; align-items:center; background:#111; padding:3px; border:1px solid #222;">
+                    <span style="font-size:9px; color:var(--text-muted)">ZOOM MULTIPLIER:</span>
+                    <div style="display:flex; gap:2px;">
+                        <button onclick="Workspace.zoomAdjust(-0.1)" style="padding:2px 6px;">-</button>
+                        <span id="zoom-factor-label" style="font-size:10px; width:35px; text-align:center; display:inline-block; line-height:20px;">100%</span>
+                        <button onclick="Workspace.zoomAdjust(0.1)" style="padding:2px 6px;">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-section" id="network-logger">
+            <h3>Global Network Topology Packet Stream</h3>
+            <div class="log-stream" id="log-container">
+                <div class="log-entry">[System] Routing Engine Initialized. Latency set to 15ms per 100px vector distance. Zoom and Area Selection engines attached.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="workspace-container" class="pan-mode">
+        <div id="workspace-canvas"></div>
+        <div id="selection-box"></div>
+    </div>
+
+    <script>
+        // Central Core State Database Engine
+        const NetworkHub = {
+            sims: {}, // Registered IMSI data structural records
+            socialAccounts: {}, // Central database storage for NetSpace profiles
+            socialPosts: [], // Stream database table for timeline updates
+            activeCalls: {}, // Node matching table for dynamic call instances
+            routers: {}, // Global records pool tracking provisioned structural routing equipment
+
+            init() {
+                // Generate some initial placeholder profiles and posts for NetSpace app
+                this.socialAccounts["@network_ops"] = { handle: "@network_ops", pass: "123" };
+                this.socialAccounts["@echo_bot"] = { handle: "@echo_bot", pass: "123" };
+                
+                this.socialPosts.push({ sender: "@network_ops", content: "Mainframe infrastructure testing completely operational. Latency routing active." });
+                this.socialPosts.push({ sender: "@echo_bot", content: "Hello world. Grid virtualization is running steady." });
+            },
+
+            log(module, text) {
+                const container = document.getElementById('log-container');
+                if(!container) return;
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerText = `[${module}] ${text}`;
+                container.appendChild(entry);
+                container.scrollTop = container.scrollHeight;
+            },
+
+            generateSim() {
+                const input = document.getElementById('sim-msisdn');
+                let number = input.value.trim();
+                if(!number) {
+                    number = Math.floor(100000 + Math.random() * 900000).toString();
+                }
+                if(this.sims[number]) {
+                    alert("MSISDN collision: Identity profile already provisioned.");
+                    return;
+                }
+                this.sims[number] = {
+                    phoneNumber: number,
+                    allocatedTo: null, // Hardbound physical phone instance ID mapping
+                    messages: {} // Local communication cache
+                };
+                this.log("Carrier", `SIM Registry Provisioned: +1 (${number})`);
+                input.value = '';
+                this.updateSimCount();
+                Workspace.refreshAllSimTrays();
+            },
+
+            updateSimCount() {
+                document.getElementById('sim-count').innerText = Object.keys(this.sims).length;
+            },
+
+            // Latency Calculations Derived from Coordinate Vectors
+            calculateLatency(phoneA_Id, phoneB_Id) {
+                const pA = Workspace.devices[phoneA_Id];
+                const pB = Workspace.devices[phoneB_Id];
+                if(!pA || !pB) return 0;
+                
+                const dx = pA.x - pB.x;
+                const dy = pA.y - pB.y;
+                const distance = Math.sqrt(dx*dx + dy*dy);
+                // Math conversion formula: 15ms latency per 100 pixels displacement
+                const latency = Math.round((distance / 100) * 15);
+                return { distance: Math.round(distance), latency: Math.max(5, latency) };
+            },
+
+            routeSMS(fromNum, toNum, message, originatingPhoneId) {
+                const targetSim = this.sims[toNum];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("Routing Engine", `Packet dropped: Target MSISDN +1 (${toNum}) unreachable or missing hardware allocation.`);
+                    return false;
+                }
+
+                const targetPhoneId = targetSim.allocatedTo;
+                const metrics = this.calculateLatency(originatingPhoneId, targetPhoneId);
+
+                this.log("Network", `Routing SMS [${fromNum} -> ${toNum}] | Dist: ${metrics.distance}px -> Latency Delay: ${metrics.latency}ms`);
+                
+                setTimeout(() => {
+                    const targetDeviceInstance = Workspace.devices[targetPhoneId];
+                    if(targetDeviceInstance) {
+                        targetDeviceInstance.receiveSMS(fromNum, message);
+                    }
+                }, metrics.latency);
+                return true;
+            },
+
+            initiateCall(fromNum, toNum, originatingPhoneId) {
+                const targetSim = this.sims[toNum];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("Switchboard", `Call Failed: +1 (${toNum}) is out of service area.`);
+                    return "FAILED";
+                }
+
+                const targetPhoneId = targetSim.allocatedTo;
+                if(targetPhoneId === originatingPhoneId) return "BUSY";
+                
+                const metrics = this.calculateLatency(originatingPhoneId, targetPhoneId);
+                this.log("Switchboard", `Establishing Call Path [${fromNum} -> ${toNum}] | Pipeline Delay: ${metrics.latency}ms`);
+
+                setTimeout(() => {
+                    const targetDevice = Workspace.devices[targetPhoneId];
+                    if(targetDevice) {
+                        targetDevice.triggerIncomingCall(fromNum, originatingPhoneId);
+                    }
+                }, metrics.latency);
+                return "ROUTING";
+            },
+
+            connectCall(phoneIdA, phoneIdB) {
+                this.activeCalls[phoneIdA] = phoneIdB;
+                this.activeCalls[phoneIdB] = phoneIdA;
+                this.log("Switchboard", `Circuit Connection Locked: Device ID #${phoneIdA} <=> Device ID #${phoneIdB}`);
+            },
+
+            terminateCall(phoneId) {
+                const peerId = this.activeCalls[phoneId];
+                delete this.activeCalls[phoneId];
+                if(peerId) {
+                    delete this.activeCalls[peerId];
+                    const peerDevice = Workspace.devices[peerId];
+                    if(peerDevice) peerDevice.hangupCall(false);
+                }
+            },
+
+            publishSocialPost(sender, content, originatingPhoneId) {
+                this.socialPosts.unshift({ sender, content });
+                // Notify all devices to re-draw timelines inside app views
+                Object.values(Workspace.devices).forEach(dev => {
+                    const metrics = this.calculateLatency(originatingPhoneId, dev.id);
+                    setTimeout(() => { dev.refreshSocialFeed(); }, metrics.latency);
+                });
+                this.log("NetSpace DB", `${sender} updated status globally across cluster array.`);
+            }
+        };
+
+        // Infinite Workspace Vector Architecture
+        const Workspace = {
+            devices: {},
+            routers: {},
+            deviceCount: 0,
+            routerCount: 0,
+            canvas: null,
+            panX: 100,
+            panY: 50,
+            zoom: 1.0,
+            toolMode: 'pan', // 'pan' or 'select'
+            isDragging: false,
+            isDrawingSelect: false,
+            startX: 0, startY: 0,
+            selectBoxStart: {x:0, y:0},
+            selectedNodes: [], // Array of objects currently marked in active bounding area
+
+            init() {
+                this.canvas = document.getElementById('workspace-canvas');
+                const container = document.getElementById('workspace-container');
+
+                container.addEventListener('mousedown', (e) => {
+                    const rect = container.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+
+                    if(this.toolMode === 'select') {
+                        // Area Drawing Mode Initialization Route Loop block
+                        this.isDrawingSelect = true;
+                        this.selectBoxStart.x = clickX;
+                        this.selectBoxStart.y = clickY;
+                        const box = document.getElementById('selection-box');
+                        box.style.left = `${clickX}px`;
+                        box.style.top = `${clickY}px`;
+                        box.style.width = '0px';
+                        box.style.height = '0px';
+                        box.style.display = 'block';
+                        e.preventDefault();
+                    } else if(this.toolMode === 'pan') {
+                        if(e.target === container || e.target === this.canvas || e.target.classList.contains('selected-group-outline')) {
+                            this.isDragging = true;
+                            this.startX = e.clientX - this.panX;
+                            this.startY = e.clientY - this.panY;
+                        }
+                    }
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    const container = document.getElementById('workspace-container');
+                    const rect = container.getBoundingClientRect();
+                    
+                    if (this.isDrawingSelect) {
+                        const currentX = e.clientX - rect.left;
+                        const currentY = e.clientY - rect.top;
+                        
+                        const left = Math.min(this.selectBoxStart.x, currentX);
+                        const top = Math.min(this.selectBoxStart.y, currentY);
+                        const width = Math.abs(this.selectBoxStart.x - currentX);
+                        const height = Math.abs(this.selectBoxStart.y - currentY);
+                        
+                        const box = document.getElementById('selection-box');
+                        box.style.left = `${left}px`;
+                        box.style.top = `${top}px`;
+                        box.style.width = `${width}px`;
+                        box.style.height = `${height}px`;
+                    } else if (this.isDragging) {
+                        this.panX = e.clientX - this.startX;
+                        this.panY = e.clientY - this.startY;
+                        this.updateTransform();
+                    }
+                });
+
+                window.addEventListener('mouseup', (e) => {
+                    if (this.isDrawingSelect) {
+                        this.isDrawingSelect = false;
+                        const box = document.getElementById('selection-box');
+                        box.style.display = 'none';
+                        this.evaluateAreaSelection();
+                    }
+                    this.isDragging = false;
+                });
+
+                // Attach explicit hardware mouse scrolling connection for zoom mechanics manipulation
+                container.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+                    this.zoomAdjust(delta);
+                }, { passive: false });
+
+                this.updateTransform();
+
+                // Auto-spawn initial test infrastructure nodes
+                this.spawnDevice(200, 100, "m-7");
+                this.spawnDevice(650, 100, "m-8-plus");
+                this.spawnRouter(480, 200, "BaseStation_Alpha");
+            },
+
+            setToolMode(mode) {
+                this.toolMode = mode;
+                const container = document.getElementById('workspace-container');
+                document.getElementById('tool-pan').classList.remove('active');
+                document.getElementById('tool-select').classList.remove('active');
+                
+                if(mode === 'pan') {
+                    document.getElementById('tool-pan').classList.add('active');
+                    container.className = "pan-mode";
+                } else {
+                    document.getElementById('tool-select').classList.add('active');
+                    container.className = "select-mode";
+                }
+            },
+
+            zoomAdjust(amt) {
+                this.zoom = Math.min(Math.max(0.3, this.zoom + amt), 2.0);
+                document.getElementById('zoom-factor-label').innerText = `${Math.round(this.zoom * 100)}%`;
+                this.updateTransform();
+            },
+
+            updateTransform() {
+                this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.zoom})`;
+            },
+
+            spawnDevice(x = null, y = null, modelClass = null) {
+                this.deviceCount++;
+                const id = this.deviceCount;
+                const posX = x !== null ? x : Math.abs(this.panX)/this.zoom + 150 + (Math.random() * 100);
+                const posY = y !== null ? y : Math.abs(this.panY)/this.zoom + 50 + (Math.random() * 50);
+                const model = modelClass || document.getElementById('spawn-model').value;
+
+                const phone = new PhoneInstance(id, posX, posY, model);
+                this.devices[id] = phone;
+                this.canvas.appendChild(phone.domElement);
+                NetworkHub.log("Workspace", `Spawned Virtual Device Hardware Stack #${id} at Spatial Layout Location Vector(${Math.round(posX)}, ${Math.round(posY)})`);
+            },
+
+            spawnRouter(x = null, y = null, ssid = null) {
+                this.routerCount++;
+                const id = this.routerCount;
+                const posX = x !== null ? x : Math.abs(this.panX)/this.zoom + 200 + (Math.random() * 120);
+                const posY = y !== null ? y : Math.abs(this.panY)/this.zoom + 120 + (Math.random() * 80);
+                const routerSsid = ssid || `Router_Node_00${id}`;
+
+                const rNode = new RouterInstance(id, posX, posY, routerSsid);
+                this.routers[id] = rNode;
+                NetworkHub.routers[routerSsid] = rNode;
+                this.canvas.appendChild(rNode.domElement);
+                NetworkHub.log("Workspace", `Provisioned Wireless Gateway [${routerSsid}] at Matrix Coordinates (${Math.round(posX)}, ${Math.round(posY)})`);
+            },
+
+            refreshAllSimTrays() {
+                Object.values(this.devices).forEach(dev => {
+                    dev.populateSimSelector();
+                    dev.renderSideSimFloatingDropdown();
+                });
+            },
+
+            // Area selection computation logic blueprint routine component
+            evaluateAreaSelection() {
+                this.clearSelection();
+                const box = document.getElementById('selection-box');
+                const container = document.getElementById('workspace-container');
+                const containerRect = container.getBoundingClientRect();
+
+                const boxL = parseFloat(box.style.left);
+                const boxT = parseFloat(box.style.top);
+                const boxW = parseFloat(box.style.width);
+                const boxH = parseFloat(box.style.height);
+
+                if(boxW < 10 || boxH < 10) return; // Prevent accidentally binding tiny missclicks
+
+                // Project visual client box points down through canvas space matrices offset configurations
+                // Formula conversions mapped below: 
+                const canvasLeftBoundary = (boxL - this.panX) / this.zoom;
+                const canvasTopBoundary = (boxT - this.panY) / this.zoom;
+                const canvasRightBoundary = canvasLeftBoundary + (boxW / this.zoom);
+                const canvasBottomBoundary = canvasTopBoundary + (boxH / this.zoom);
+
+                // Check Phone Nodes bounding limits box
+                Object.values(this.devices).forEach(dev => {
+                    const width = dev.model === 'm-8-plus' ? 280 : (dev.model === 'm-7' ? 250 : 250);
+                    const height = dev.model === 'm-8-plus' ? 540 : (dev.model === 'm-7' ? 490 : 490);
+                    
+                    if(dev.x >= canvasLeftBoundary && (dev.x + width) <= canvasRightBoundary &&
+                       dev.y >= canvasTopBoundary && (dev.y + height) <= canvasBottomBoundary) {
+                        this.selectedNodes.push({ type: 'phone', instance: dev });
+                        dev.domElement.classList.add('selected');
+                    }
+                });
+
+                // Check Router Nodes bounding limits box
+                Object.values(this.routers).forEach(rot => {
+                    if(rot.x >= canvasLeftBoundary && (rot.x + 140) <= canvasRightBoundary &&
+                       rot.y >= canvasTopBoundary && (rot.y + 100) <= canvasBottomBoundary) {
+                        this.selectedNodes.push({ type: 'router', instance: rot });
+                        rot.domElement.classList.add('selected');
+                    }
+                });
+
+                if(this.selectedNodes.length > 0) {
+                    NetworkHub.log("Selection", `Captured ${this.selectedNodes.length} hardware interfaces in drawn perimeter area.`);
+                    this.constructSelectedGroupContainerOutline();
+                }
+            },
+
+            constructSelectedGroupContainerOutline() {
+                // Remove pre-existing overlay references if dropped inside routine sequence loops
+                const oldOutline = document.querySelector('.selected-group-outline');
+                if(oldOutline) oldOutline.remove();
+
+                if(this.selectedNodes.length === 0) return;
+
+                // Loop layout bounds coordinates values
+                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+                this.selectedNodes.forEach(node => {
+                    let w = 140, h = 100; // default for routers
+                    if(node.type === 'phone') {
+                        w = node.instance.model === 'm-8-plus' ? 280 : 250;
+                        h = node.instance.model === 'm-8-plus' ? 540 : 490;
+                    }
+                    if(node.instance.x < minX) minX = node.instance.x;
+                    if(node.instance.y < minY) minY = node.instance.y;
+                    if((node.instance.x + w) > maxX) maxX = node.instance.x + w;
+                    if((node.instance.y + h) > maxY) maxY = node.instance.y + h;
+                });
+
+                // Inject visual drag boundary block directly over canvas nodes layout
+                const outline = document.createElement('div');
+                outline.className = 'selected-group-outline';
+                outline.style.left = `${minX - 10}px`;
+                outline.style.top = `${minY - 10}px`;
+                outline.style.width = `${(maxX - minX) + 20}px`;
+                outline.style.height = `${(maxY - minY) + 20}px`;
+
+                // Handle compound translation shifting values mechanics across children objects
+                let dragStart = {x: 0, y: 0};
+                outline.addEventListener('mousedown', (e) => {
+                    if(this.toolMode !== 'pan') return;
+                    e.stopPropagation();
+                    dragStart.x = e.clientX;
+                    dragStart.y = e.clientY;
+
+                    // Cache structural position snapshots before mutating relative vector placements
+                    const initialPositions = this.selectedNodes.map(n => ({ inst: n.instance, x: n.instance.x, y: n.instance.y }));
+                    const outlineStartX = parseFloat(outline.style.left);
+                    const outlineStartY = parseFloat(outline.style.top);
+
+                    const onMouseMoveGroup = (ev) => {
+                        const dx = (ev.clientX - dragStart.x) / this.zoom;
+                        const dy = (ev.clientY - dragStart.y) / this.zoom;
+
+                        outline.style.left = `${outlineStartX + dx * this.zoom}px`;
+                        outline.style.top = `${outlineStartY + dy * this.zoom}px`;
+
+                        initialPositions.forEach(pos => {
+                            pos.inst.updatePosition(pos.x + dx, pos.y + dy);
+                        });
+                    };
+
+                    const onMouseUpGroup = () => {
+                        window.removeEventListener('mousemove', onMouseMoveGroup);
+                        window.removeEventListener('mouseup', onMouseUpGroup);
+                        NetworkHub.log("Workspace", "Relocated selected compound cluster block across spatial orientation matrix grid.");
+                    };
+
+                    window.addEventListener('mousemove', onMouseMoveGroup);
+                    window.addEventListener('mouseup', onMouseUpGroup);
+                });
+
+                this.canvas.appendChild(outline);
+            },
+
+            clearSelection() {
+                Object.values(this.devices).forEach(d => d.domElement.classList.remove('selected'));
+                Object.values(this.routers).forEach(r => r.domElement.classList.remove('selected'));
+                this.selectedNodes = [];
+                const oldOutline = document.querySelector('.selected-group-outline');
+                if(oldOutline) oldOutline.remove();
+            }
+        };
+
+        // Wireless Router Hardware Node Architecture Core Blueprint Blueprint Object Model
+        class RouterInstance {
+            constructor(id, x, y, ssid) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.ssid = ssid;
+
+                this.domElement = document.createElement('div');
+                this.domElement.className = 'router-wrapper';
+                this.domElement.style.left = `${this.x}px`;
+                this.domElement.style.top = `${this.y}px`;
+
+                this.buildRouterUI();
+                this.bindEvents();
+            }
+
+            buildRouterUI() {
+                this.domElement.innerHTML = `
+                    <div class="router-header">
+                        <span>📶 AP NODE-0${this.id}</span>
+                        <span style="color:#00ff00; font-size:8px;">ONLINE</span>
+                    </div>
+                    <div class="router-body">
+                        <strong>SSID:</strong> ${this.ssid}<br>
+                        <strong>FREQ:</strong> 2.4G / 5G Hybrid<br>
+                        <div class="router-lights">
+                            <div class="light blink"></div>
+                            <div class="light blink" style="animation-delay: 0.3s"></div>
+                            <div class="light" style="background:#0055ff;"></div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            bindEvents() {
+                let dragStart = {x:0, y:0};
+                this.domElement.addEventListener('mousedown', (e) => {
+                    if(Workspace.toolMode !== 'pan' || this.domElement.classList.contains('selected')) return;
+                    e.stopPropagation();
+                    dragStart.x = e.clientX - this.x;
+                    dragStart.y = e.clientY - this.y;
+                    
+                    const moveHandler = (ev) => {
+                        this.updatePosition(ev.clientX - dragStart.x, ev.clientY - dragStart.y);
+                    };
+                    const upHandler = () => {
+                        window.removeEventListener('mousemove', moveHandler);
+                        window.removeEventListener('mouseup', upHandler);
+                    };
+                    window.addEventListener('mousemove', moveHandler);
+                    window.addEventListener('mouseup', upHandler);
+                });
+            }
+
+            updatePosition(nx, ny) {
+                this.x = nx;
+                this.y = ny;
+                this.domElement.style.left = `${this.x}px`;
+                this.domElement.style.top = `${this.y}px`;
+            }
+        }
+
+        // Virtualized Device Object Model Blueprint
+        class PhoneInstance {
+            constructor(id, x, y, model) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.model = model; // 'm-7', 'm-8', 'm-8-plus'
+                this.currentSim = null;
+                this.connectedWifi = null; // Track wireless association parameters
+                this.activeApp = 'launcher';
+                this.activeCallData = null; // System active operational tracking
+                this.callTimerInterval = null;
+                this.currentWallpaper = ''; // Local volatile visual state property memory slot
+                
+                // NetSpace Application Local State Memory Structure
+                this.socialAccountsCache = []; // Internal structural profile hot-swapping vault array (Max 5)
+                this.activeSocialUser = null; 
+
+                this.domElement = document.createElement('div');
+                this.domElement.className = `phone-wrapper ${this.model}`;
+                this.domElement.style.left = `${this.x}px`;
+                this.domElement.style.top = `${this.y}px`;
+
+                this.buildHardwareArchitecture();
+                this.bindHardwareEvents();
+                this.populateSimSelector();
+                this.renderSideSimFloatingDropdown();
+                this.updateStatusBar();
+                this.clockTick();
+                setInterval(() => this.clockTick(), 1000);
+            }
+
+            buildHardwareArchitecture() {
+                let modelLabel = "Simulated Hardware Interface v7.1";
+                if(this.model === 'm-8') modelLabel = "Simulated Core Alpha 8.0 [Glass]";
+                if(this.model === 'm-8-plus') {
+                    modelLabel = "Simulated Extended Chassis 8+ Frame Architecture";
+                }
+
+                // Front screen face container is rendered clean without obstructive custom stylized aesthetic phone alignment lines
+                // Back face container has zero overlapping mechanical configuration interactive push button elements built in
+                this.domElement.innerHTML = `
+                    <div class="flip-tab" title="Flip Device Over">FLIP</div>
+                    <div class="sim-tray-side-clicker" title="Access Hardware Sim Slot Assembly Line"></div>
+                    <div class="sim-floating-selector-panel">
+                        <span style="font-size:8px; color:var(--text-muted); text-transform:uppercase;">CHASSIS TRAY LINK:</span>
+                        <select class="sim-selector-floating-node" style="width:100%; font-size:9px; background:#000;"></select>
+                        <button class="sim-floating-bind-trigger-btn" style="width:100%; font-size:9px; margin-top:2px; background:#222; padding:2px;">MOUNT</button>
+                    </div>
+
+                    <div class="phone-card">
+                        <div class="phone-face phone-front">
+                            <div class="top-bezel">
+                                <div class="front-cam"></div>
+                                <div class="speaker-grille"></div>
+                            </div>
+                            <div class="screen">
+                                <div class="status-bar">
+                                    <div class="status-left">
+                                        <span class="carrier-tag">NO SIM</span>
+                                        <span class="signal-bars">▱▱▱▱</span>
+                                        <span class="wifi-indicator-tag" style="font-size:8px; margin-left:2px;"></span>
+                                    </div>
+                                    <div class="status-right">
+                                        <span class="sim-time">00:00</span>
+                                        <span>🔋100%</span>
+                                    </div>
+                                </div>
+                                <div class="app-space">
+                                    
+                                    <div class="inc-call-overlay">
+                                        <div style="font-size:11px; color:#aaa; margin-bottom:15px;">INCOMING PIPELINE REQUEST</div>
+                                        <div class="inc-caller-id" style="font-size:18px; font-weight:bold; margin-bottom:30px;">+1 (000)</div>
+                                        <div style="display:flex; gap:15px;">
+                                            <button class="accept-btn" style="background:#0f330f; border-color:#0f550f; font-weight:bold;">ACCEPT</button>
+                                            <button class="decline-btn" style="background:#330f0f; border-color:#550f0f;">DECLINE</button>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view active" data-app="launcher">
+                                        <div class="launcher-grid">
+                                            <div class="app-icon" data-launch="phone"><span>📞</span>Phone</div>
+                                            <div class="app-icon" data-launch="messages"><span>💬</span>Messages</div>
+                                            <div class="app-icon" data-launch="netspace"><span>🌐</span>NetSpace</div>
+                                            <div class="app-icon" data-launch="settings"><span>⚙️</span>Settings</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="phone">
+                                        <div class="app-header"><span>📞 Network Dialer</span><button class="app-close">X</button></div>
+                                        <div class="app-body">
+                                            <div class="dialer-output"></div>
+                                            <div class="dialer-pad">
+                                                <div class="dial-btn">1</div><div class="dial-btn">2</div><div class="dial-btn">3</div>
+                                                <div class="dial-btn">4</div><div class="dial-btn">5</div><div class="dial-btn">6</div>
+                                                <div class="dial-btn">7</div><div class="dial-btn">8</div><div class="dial-btn">9</div>
+                                                <div class="dial-btn">*</div><div class="dial-btn">0</div><div class="dial-btn">#</div>
+                                            </div>
+                                            <div class="call-actions">
+                                                <button class="phone-call-trigger flex-fill" style="background:#0f2c0f">LINK DIAL</button>
+                                                <button class="phone-clear-trigger" style="background:#222">CLR</button>
+                                            </div>
+                                            <div class="active-call-state" style="display:none; margin-top:10px; border:1px solid #333; padding:5px; text-align:center; background:#050505;">
+                                                <div class="call-status-label">CONNECTED</div>
+                                                <div class="call-timer">00:00</div>
+                                                <button class="phone-hangup-trigger" style="background:#330f0f; width:100%; margin-top:5px;">TERMINATE</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="messages">
+                                        <div class="app-header"><span>💬 Carrier SMS</span><button class="app-close">X</button></div>
+                                        <div class="app-body">
+                                            <div class="msg-thread-selector">
+                                                <div class="utility-row">
+                                                    <input type="text" class="msg-target-input" placeholder="Target Phone No.">
+                                                    <button class="msg-open-thread">CHAT</button>
+                                                </div>
+                                                <div class="msg-threads"></div>
+                                            </div>
+                                            <div class="msg-active-chat" style="display:none; flex-direction:column; flex-grow:1;">
+                                                <button class="msg-back-to-threads" style="margin-bottom:4px; align-self:flex-start;"><- BACK</button>
+                                                <div class="chat-stream"></div>
+                                                <div class="utility-row">
+                                                    <input type="text" class="chat-msg-input" placeholder="Enter secure text...">
+                                                    <button class="chat-send-trigger">SEND</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="netspace">
+                                        <div class="app-header"><span>🌐 NetSpace Social</span><button class="app-close">X</button></div>
+                                        <div class="soc-acc-bar"></div>
+                                        <div class="app-body">
+                                            <div class="soc-auth-screen" style="display:none; flex-direction:column; gap:5px;">
+                                                <div style="font-size:10px; color:var(--text-muted)">CONNECT NETWORK IDENTITY PROFILE</div>
+                                                <input type="text" class="soc-user-input" placeholder="Handle (e.g. @alpha)">
+                                                <button class="soc-login-trigger">AUTHORIZE INTERFACE</button>
+                                                <div style="margin-top:10px; font-size:9px; color:#444">Cached Accounts (Max 5). Hot-swap instantly via profile navigation node bar.</div>
+                                            </div>
+                                            <div class="soc-main-screen" style="display:none; flex-direction:column; flex-grow:1;">
+                                                <div class="utility-row">
+                                                    <input type="text" class="soc-post-input" placeholder="Broadcast status across topology...">
+                                                    <button class="soc-post-trigger">POST</button>
+                                                </div>
+                                                <div class="soc-timeline" style="flex-grow:1; overflow-y:auto; background:#030303; padding:4px;"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="app-view" data-app="settings">
+                                        <div class="app-header"><span>⚙️ Core Settings</span><button class="app-close">X</button></div>
+                                        <div class="app-body" style="gap:8px;">
+                                            <div>
+                                                <label style="color:var(--text-muted); font-size:9px;">HARDWARE NODE ID</label>
+                                                <input type="text" value="NODE-00${this.id}" disabled style="background:#111; width:100%; padding:3px;">
+                                            </div>
+                                            <div>
+                                                <label style="color:var(--text-muted); font-size:9px;">X / Y GRID POSITION REFERENCE</label>
+                                                <div style="font-size:10px; margin-top:2px;" class="settings-coords">X: 0, Y: 0</div>
+                                            </div>
+                                            
+                                            <div style="border-top:1px solid #222; padding-top:4px;">
+                                                <label style="color:var(--text-muted); font-size:9px; display:block; margin-bottom:2px;">INTERFACE DESKTOP WALLPAPER</label>
+                                                <select class="settings-wallpaper-selector-dropdown" style="width:100%; font-size:10px;">
+                                                    <option value="">[ DEFAULT DARK THEME ]</option>
+                                                    <option value="linear-gradient(45deg, #220000, #000000)">Industrial Rust Crimson</option>
+                                                    <option value="linear-gradient(135deg, #001122, #050505)">Matrix Submerged Blue</option>
+                                                    <option value="linear-gradient(0deg, #0c1a0c, #020202)">Terminal Monochromatic Green</option>
+                                                    <option value="#333333">Solid Slate Grey</option>
+                                                </select>
+                                            </div>
+
+                                            <div style="border-top:1px solid #222; padding-top:4px;">
+                                                <label style="color:var(--text-muted); font-size:9px; display:block; margin-bottom:2px;">WIRELESS LAN INTERFACE INTERCONNECTION</label>
+                                                <div class="utility-row">
+                                                    <select class="settings-wifi-selector-dropdown" style="width:100%; font-size:10px;"></select>
+                                                    <button class="settings-wifi-connect-btn" style="background:#112211;">JOIN</button>
+                                                </div>
+                                            </div>
+
+                                            <div style="border-top:1px solid #222; padding-top:4px;">
+                                                <button class="wuke-device-data" style="background:#2a0f0f; width:100%; padding:4px;">ERASE VOLATILE STORAGE</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            <div class="bottom-bezel">
+                                <div class="home-button"></div>
+                            </div>
+                        </div>
+
+                        <div class="phone-face phone-back">
+                            <div class="cam-housing">
+                                <div class="lens"></div>
+                                ${this.model === 'm-8-plus' ? '<div class="lens"></div>' : ''}
+                            </div>
+                            <div class="hardware-info">
+                                <div>${modelLabel}</div>
+                                <div>Physical Layer Stack Node: #${this.id}</div>
+                            </div>
+                            <div class="sim-tray-assembly" style="text-align:center; opacity: 0.4;">
+                                <div style="font-size:8px; color:#555; text-transform:uppercase;">Hardware Sim Slot</div>
+                                <div style="font-size:9px; color:#333;">[ Use Side Interface Tray ]</div>
+                            </div>
+                            <div style="font-size:8px; color:#333;">TOPOLOGY FIELD DEVICE CORP.</div>
+                        </div>
+                    </div>
+                    <div class="spatial-hud">
+                        NODE-00${this.id}<br>
+                        <span class="hud-coords">(${Math.round(this.x)}, ${Math.round(this.y)})</span>
+                    </div>
+                `;
+            }
+
+            bindHardwareEvents() {
+                const card = this.domElement.querySelector('.phone-card');
+                
+                // Flip Mechanical Toggle Activation Engine
+                this.domElement.querySelector('.flip-tab').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.domElement.classList.toggle('flipped');
+                });
+
+                // Mechanical click linkage interface for mounting network SIMs externally from the frame side tray slot button
+                const sideSimClicker = this.domElement.querySelector('.sim-tray-side-clicker');
+                const sidePanel = this.domElement.querySelector('.sim-floating-selector-panel');
+                sideSimClicker.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const disp = sidePanel.style.display;
+                    sidePanel.style.display = (disp === 'flex') ? 'none' : 'flex';
+                });
+
+                // Floating mounted selector assembly interface button logic routine execution path linkage
+                this.domElement.querySelector('.sim-floating-bind-trigger-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const chosen = this.domElement.querySelector('.sim-selector-floating-node').value;
+                    if(this.currentSim) {
+                        NetworkHub.sims[this.currentSim].allocatedTo = null;
+                        NetworkHub.log("Carrier", `SIM +1 (${this.currentSim}) removed from Chassis Node #${this.id}`);
+                    }
+                    if(chosen === "NONE") {
+                        this.currentSim = null;
+                    } else {
+                        if(NetworkHub.sims[chosen].allocatedTo) {
+                            const oldPhone = Workspace.devices[NetworkHub.sims[chosen].allocatedTo];
+                            if(oldPhone) { oldPhone.currentSim = null; oldPhone.updateStatusBar(); }
+                        }
+                        this.currentSim = chosen;
+                        NetworkHub.sims[chosen].allocatedTo = this.id;
+                        NetworkHub.log("Carrier", `SIM Transponder Embedded: +1 (${chosen}) securely mounted into Frame Matrix Node #${this.id}`);
+                    }
+                    this.updateStatusBar();
+                    sidePanel.style.display = 'none';
+                    Workspace.refreshAllSimTrays();
+                });
+
+                // Hardware Structural Drag and Move System Linkages
+                let dragStart = {x:0, y:0};
+                const onMouseDown = (e) => {
+                    if(Workspace.toolMode !== 'pan' || this.domElement.classList.contains('selected')) return;
+                    if(e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.className === 'flip-tab' || e.target.classList.contains('sim-tray-side-clicker')) return;
+                    e.stopPropagation();
+                    dragStart.x = e.clientX - this.x;
+                    dragStart.y = e.clientY - this.y;
+                    window.addEventListener('mousemove', onMouseMove);
+                    window.addEventListener('mouseup', onMouseUp);
+                };
+
+                const onMouseMove = (e) => {
+                    this.updatePosition(e.clientX - dragStart.x, e.clientY - dragStart.y);
+                };
+
+                const onMouseUp = () => {
+                    window.removeEventListener('mousemove', onMouseMove);
+                    window.removeEventListener('mouseup', onMouseUp);
+                };
+
+                this.domElement.addEventListener('mousedown', onMouseDown);
+
+                // OS Home Layer Interface Button Event
+                this.domElement.querySelector('.home-button').addEventListener('click', () => this.switchApp('launcher'));
+
+                // Application Launcher Routing Links
+                this.domElement.querySelectorAll('[data-launch]').forEach(icon => {
+                    icon.addEventListener('click', () => this.switchApp(icon.dataset.launch));
+                });
+                this.domElement.querySelectorAll('.app-close').forEach(btn => {
+                    btn.addEventListener('click', () => this.switchApp('launcher'));
+                });
+
+                // Working Local Wallpaper State Modifier Dropdown Selection Event Routing Link
+                const wallSelect = this.domElement.querySelector('.settings-wallpaper-selector-dropdown');
+                const screenNode = this.domElement.querySelector('.screen');
+                wallSelect.addEventListener('change', () => {
+                    this.currentWallpaper = wallSelect.value;
+                    screenNode.style.background = this.currentWallpaper ? this.currentWallpaper : '#000000';
+                    screenNode.style.backgroundSize = 'cover';
+                    NetworkHub.log("Hardware OS", `Updated Frame Layout Desktop Skin Matrix on Node #${this.id}`);
+                });
+
+                // Local Wifi Connectivity Association Execution Action Bindings
+                const wifiConnectBtn = this.domElement.querySelector('.settings-wifi-connect-btn');
+                const wifiSelect = this.domElement.querySelector('.settings-wifi-selector-dropdown');
+                wifiConnectBtn.addEventListener('click', () => {
+                    const targetSsid = wifiSelect.value;
+                    if(targetSsid === "NONE" || !targetSsid) {
+                        this.connectedWifi = null;
+                        NetworkHub.log("Hardware OS", `Device Node #${this.id} detached active WLAN interfaces links.`);
+                    } else {
+                        this.connectedWifi = targetSsid;
+                        NetworkHub.log("Hardware OS", `Device Node #${this.id} established connection loop handshake with gateway router AP: [${targetSsid}]`);
+                    }
+                    this.updateStatusBar();
+                });
+
+                // Dialer System Events
+                const dialOutput = this.domElement.querySelector('.dialer-output');
+                this.domElement.querySelectorAll('.dial-btn').forEach(btn => {
+                    btn.addEventListener('click', () => dialOutput.innerText += btn.innerText);
+                });
+                this.domElement.querySelector('.phone-clear-trigger').addEventListener('click', () => dialOutput.innerText = '');
+                
+                this.domElement.querySelector('.phone-call-trigger').addEventListener('click', () => {
+                    const target = dialOutput.innerText.trim();
+                    if(!this.currentSim) { alert("NO CELLULAR TRANSPONDER LINK ENCRYPTED (INSERT SIM)"); return; }
+                    if(!target) return;
+                    
+                    this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                    this.domElement.querySelector('.dialer-pad').style.display = 'none';
+                    const stateBox = this.domElement.querySelector('.active-call-state');
+                    stateBox.style.display = 'block';
+                    stateBox.querySelector('.call-status-label').innerText = "ROUTING CORRIDOR...";
+                    
+                    const res = NetworkHub.initiateCall(this.currentSim, target, this.id);
+                    if(res === "FAILED") {
+                        stateBox.querySelector('.call-status-label').innerText = "LINE UNREACHABLE";
+                    } else if(res === "BUSY") {
+                        stateBox.querySelector('.call-status-label').innerText = "CIRCUIT BUSY NODE LOOP";
+                    } else {
+                        this.activeCallData = { role: 'caller', targetNumber: target };
+                    }
+                });
+
+                this.domElement.querySelector('.phone-hangup-trigger').addEventListener('click', () => this.hangupCall(true));
+
+                // Incoming Call Handlers
+                this.domElement.querySelector('.accept-btn').addEventListener('click', () => {
+                    this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                    this.switchApp('phone');
+                    this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                    this.domElement.querySelector('.dialer-pad').style.display = 'none';
+                    const stateBox = this.domElement.querySelector('.active-call-state');
+                    stateBox.style.display = 'block';
+                    stateBox.querySelector('.call-status-label').innerText = "LIVE LINK ENCRYPTED";
+                    
+                    NetworkHub.connectCall(this.id, this.activeCallData.peerPhoneId);
+                    this.startCallTimer();
+                });
+
+                this.domElement.querySelector('.decline-btn').addEventListener('click', () => {
+                    this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                    NetworkHub.terminateCall(this.id);
+                    this.activeCallData = null;
+                });
+
+                // Messaging App Systems Threads Initialization UI Elements
+                this.domElement.querySelector('.msg-open-thread').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.msg-target-input');
+                    const num = input.value.trim();
+                    if(!num) return;
+                    this.openChatThread(num);
+                });
+
+                this.domElement.querySelector('.msg-back-to-threads').addEventListener('click', () => {
+                    this.domElement.querySelector('.msg-active-chat').style.display = 'none';
+                    this.domElement.querySelector('.msg-thread-selector').style.display = 'flex';
+                    this.renderMessageThreadsList();
+                });
+
+                this.domElement.querySelector('.chat-send-trigger').addEventListener('click', () => {
+                    const inp = this.domElement.querySelector('.chat-msg-input');
+                    const msg = inp.value.trim();
+                    if(!msg || !this.currentSim) return;
+                    
+                    const activeTargetNum = this.activeChatNum;
+                    this.saveLocalSMS(this.currentSim, activeTargetNum, 'sent', msg);
+                    NetworkHub.routeSMS(this.currentSim, activeTargetNum, msg, this.id);
+                    
+                    inp.value = '';
+                    this.openChatThread(activeTargetNum); // Refresh local node layout viewport
+                });
+
+                // NetSpace Application Local Flow Systems Event Engine Binding Configuration
+                this.domElement.querySelector('.soc-login-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.soc-user-input');
+                    let handle = input.value.trim();
+                    if(!handle.startsWith('@')) handle = '@' + handle;
+                    if(handle.length < 2) return;
+
+                    if(!NetworkHub.socialAccounts[handle]) {
+                        NetworkHub.socialAccounts[handle] = { handle: handle };
+                    }
+                    if(!this.socialAccountsCache.includes(handle)) {
+                        if(this.socialAccountsCache.length >= 5) this.socialAccountsCache.shift();
+                        this.socialAccountsCache.push(handle);
+                    }
+                    this.activeSocialUser = handle;
+                    input.value = '';
+                    this.renderSocialAppView();
+                });
+
+                this.domElement.querySelector('.soc-post-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.soc-post-input');
+                    const txt = input.value.trim();
+                    if(!txt || !this.activeSocialUser) return;
+                    NetworkHub.publishSocialPost(this.activeSocialUser, txt, this.id);
+                    input.value = '';
+                });
+
+                // Storage Factory Data Wipe Settings Trigger Component Routine
+                this.domElement.querySelector('.wuke-device-data').addEventListener('click', () => {
+                    this.socialAccountsCache = [];
+                    this.activeSocialUser = null;
+                    this.connectedWifi = null;
+                    if(this.currentSim) {
+                        NetworkHub.sims[this.currentSim].allocatedTo = null;
+                        this.currentSim = null;
+                    }
+                    this.currentWallpaper = '';
+                    screenNode.style.background = '#000000';
+                    this.domElement.querySelector('.settings-wallpaper-selector-dropdown').value = '';
+                    this.updateStatusBar();
+                    this.switchApp('launcher');
+                    NetworkHub.log("Hardware OS", `Hardware Frame ID Node #${this.id} successfully wiped physical system storage registers.`);
+                });
+            }
+
+            updatePosition(nx, ny) {
+                this.x = nx;
+                this.y = ny;
+                this.domElement.style.left = `${this.x}px`;
+                this.domElement.style.top = `${this.y}px`;
+                this.domElement.querySelector('.hud-coords').innerText = `(${Math.round(this.x)}, ${Math.round(this.y)})`;
+                this.domElement.querySelector('.settings-coords').innerText = `X: ${Math.round(this.x)}, Y: ${Math.round(this.y)}`;
+            }
+
+            switchApp(appName) {
+                this.activeApp = appName;
+                this.domElement.querySelectorAll('.app-view').forEach(view => {
+                    view.classList.remove('active');
+                    if(view.dataset.app === appName) view.classList.add('active');
+                });
+
+                // Operational setup execution routes hooks when entering application boundaries
+                if(appName === 'messages') {
+                    this.renderMessageThreadsList();
+                } else if(appName === 'netspace') {
+                    this.renderSocialAppView();
+                } else if(appName === 'settings') {
+                    this.populateWifiSettingsSelectorDropdown();
+                }
+            }
+
+            updateStatusBar() {
+                const carrier = this.domElement.querySelector('.carrier-tag');
+                const bars = this.domElement.querySelector('.signal-bars');
+                const wifiTag = this.domElement.querySelector('.wifi-indicator-tag');
+
+                if(this.currentSim) {
+                    carrier.innerText = `+1 (${this.currentSim})`;
+                    bars.innerText = "▰▰▰▰";
+                    bars.style.color = "#00ff00";
+                } else {
+                    carrier.innerText = "NO NETWORK LINK";
+                    bars.innerText = "▱▱▱▱";
+                    bars.style.color = "inherit";
+                }
+
+                if(this.connectedWifi) {
+                    wifiTag.innerText = `[📶 ${this.connectedWifi}]`;
+                    wifiTag.style.color = "#00ffff";
+                } else {
+                    wifiTag.innerText = "";
+                }
+            }
+
+            clockTick() {
+                const now = new Date();
+                const hrs = now.getHours().toString().padStart(2, '0');
+                const mins = now.getMinutes().toString().padStart(2, '0');
+                const timeLabel = this.domElement.querySelector('.sim-time');
+                if(timeLabel) timeLabel.innerText = `${hrs}:${mins}`;
+            }
+
+            populateSimSelector() {
+                // Maintained for general compliance, but UI interaction routes through side panel method below
+                this.renderSideSimFloatingDropdown();
+            }
+
+            // Sync available provisions matrix logs directly into the side chassis popup select element node components
+            renderSideSimFloatingDropdown() {
+                const select = this.domElement.querySelector('.sim-selector-floating-node');
+                if(!select) return;
+                select.innerHTML = '<option value="NONE">[ TRAY EMPTY ]</option>';
+                Object.keys(NetworkHub.sims).forEach(num => {
+                    const sim = NetworkHub.sims[num];
+                    if(!sim.allocatedTo || sim.allocatedTo === this.id) {
+                        const opt = document.createElement('option');
+                        opt.value = num;
+                        opt.innerText = `+1 (${num}) ${sim.allocatedTo === this.id ? '[In]' : ''}`;
+                        select.appendChild(opt);
+                    }
+                });
+                if(this.currentSim) select.value = this.currentSim;
+            }
+
+            // Pull available active workspace access point transmitters directly into the device settings configuration dropdown
+            populateWifiSettingsSelectorDropdown() {
+                const select = this.domElement.querySelector('.settings-wifi-selector-dropdown');
+                if(!select) return;
+                select.innerHTML = '<option value="NONE">[ DISCONNECT WIFI ]</option>';
+                Object.keys(NetworkHub.routers).forEach(ssid => {
+                    const opt = document.createElement('option');
+                    opt.value = ssid;
+                    opt.innerText = `${ssid}`;
+                    select.appendChild(opt);
+                });
+                if(this.connectedWifi) select.value = this.connectedWifi;
+            }
+
+            // --- DEEP PHONE ENGINE APP INTERNAL ACTIONS ---
+
+            triggerIncomingCall(fromNum, peerPhoneId) {
+                this.activeCallData = { role: 'receiver', targetNumber: fromNum, peerPhoneId: peerPhoneId };
+                const overlay = this.domElement.querySelector('.inc-call-overlay');
+                overlay.querySelector('.inc-caller-id').innerText = `+1 (${fromNum})`;
+                overlay.classList.add('active');
+            }
+
+            establishCallConnection() {
+                const stateBox = this.domElement.querySelector('.active-call-state');
+                stateBox.querySelector('.call-status-label').innerText = "LIVE LINK ENCRYPTED";
+                this.startCallTimer();
+            }
+
+            startCallTimer() {
+                let sec = 0;
+                const display = this.domElement.querySelector('.call-timer');
+                display.innerText = "00:00";
+                clearInterval(this.callTimerInterval);
+                this.callTimerInterval = setInterval(() => {
+                    sec++;
+                    const m = Math.floor(sec/60).toString().padStart(2, '0');
+                    const s = (sec%60).toString().padStart(2, '0');
+                    display.innerText = `${m}:${s}`;
+                }, 1000);
+            }
+
+            hangupCall(notifyNetwork = true) {
+                clearInterval(this.callTimerInterval);
+                if(notifyNetwork) {
+                    NetworkHub.terminateCall(this.id);
+                }
+                
+                this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                const stateBox = this.domElement.querySelector('.active-call-state');
+                if(stateBox) stateBox.style.display = 'none';
+                this.domElement.querySelector('.phone-call-trigger').style.display = 'block';
+                this.domElement.querySelector('.dialer-pad').style.display = 'grid';
+                this.domElement.querySelector('.dialer-output').innerText = '';
+                this.activeCallData = null;
+            }
+
+            // Message Core Internal Processing Units
+            getLocalMessagesStore() {
+                if(!this.currentSim) return {};
+                if(!NetworkHub.sims[this.currentSim].messages) {
+                    NetworkHub.sims[this.currentSim].messages = {};
+                }
+                return NetworkHub.sims[this.currentSim].messages;
+            }
+
+            saveLocalSMS(simContext, partyNumber, direction, body) {
+                if(!NetworkHub.sims[simContext].messages) NetworkHub.sims[simContext].messages = {};
+                const db = NetworkHub.sims[simContext].messages;
+                if(!db[partyNumber]) db[partyNumber] = [];
+                db[partyNumber].push({ direction, text: body, timestamp: new Date() });
+            }
+
+            receiveSMS(fromNum, body) {
+                if(!this.currentSim) return;
+                this.saveLocalSMS(this.currentSim, fromNum, 'rcvd', body);
+                
+                if(this.activeApp === 'messages') {
+                    this.renderMessageThreadsList();
+                    if(this.activeChatNum === fromNum) {
+                        this.openChatThread(fromNum);
+                    }
+                }
+            }
+
+            renderMessageThreadsList() {
+                const container = this.domElement.querySelector('.msg-threads');
+                container.innerHTML = '';
+                if(!this.currentSim) {
+                    container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px;">NO ACTIVE NETWORK SIM ENCRYPTED</div>';
+                    return;
+                }
+
+                const db = this.getLocalMessagesStore();
+                const threads = Object.keys(db);
+                if(threads.length === 0) {
+                    container.innerHTML = '<div style="color:var(--text-muted); text-align:center; padding:20px;">Secure Messaging Database Empty</div>';
+                    return;
+                }
+
+                threads.forEach(num => {
+                    const row = document.createElement('div');
+                    row.className = 'thread-row';
+                    const lastMsg = db[num][db[num].length - 1];
+                    row.innerHTML = `<strong>+1 (${num})</strong><div style="font-size:10px; color:#666; overflow:hidden; text-overflow:ellipsis;">${lastMsg.text}</div>`;
+                    row.addEventListener('click', () => this.openChatThread(num));
+                    container.appendChild(row);
+                });
+            }
+
+            openChatThread(targetNum) {
+                this.activeChatNum = targetNum;
+                this.domElement.querySelector('.msg-thread-selector').style.display = 'none';
+                const chatContainer = this.domElement.querySelector('.msg-active-chat');
+                chatContainer.style.display = 'flex';
+                
+                const stream = chatContainer.querySelector('.chat-stream');
+                stream.innerHTML = '';
+                
+                const db = this.getLocalMessagesStore();
+                const history = db[targetNum] || [];
+                
+                history.forEach(msg => {
+                    const bub = document.createElement('div');
+                    bub.className = `chat-bubble ${msg.direction}`;
+                    bub.innerText = msg.text;
+                    stream.appendChild(bub);
+                });
+                stream.scrollTop = stream.scrollHeight;
+            }
+
+            // Social Account Switching System Execution Layout Elements Block Engine
+            renderSocialAppView() {
+                const authScreen = this.domElement.querySelector('.soc-auth-screen');
+                const mainScreen = this.domElement.querySelector('.soc-main-screen');
+                const bar = this.domElement.querySelector('.soc-acc-bar');
+                
+                bar.innerHTML = '';
+                
+                // Redraw cached identities nodes headers tabs
+                this.socialAccountsCache.forEach(acc => {
+                    const btn = document.createElement('div');
+                    btn.className = `mini-avatar ${this.activeSocialUser === acc ? 'active' : ''}`;
+                    btn.innerText = acc;
+                    btn.addEventListener('click', () => {
+                        this.activeSocialUser = acc;
+                        this.renderSocialAppView();
+                    });
+                    bar.appendChild(btn);
+                });
+
+                if(this.socialAccountsCache.length < 5) {
+                    const addBtn = document.createElement('div');
+                    addBtn.className = 'mini-avatar';
+                    addBtn.innerText = ' [ + Auth New ]';
+                    addBtn.style.borderColor = '#222';
+                    addBtn.addEventListener('click', () => {
+                        this.activeSocialUser = null;
+                        this.renderSocialAppView();
+                    });
+                    bar.appendChild(addBtn);
+                }
+
+                if(!this.activeSocialUser) {
+                    mainScreen.style.display = 'none';
+                    authScreen.style.display = 'flex';
+                } else {
+                    authScreen.style.display = 'none';
+                    mainScreen.style.display = 'flex';
+                    this.refreshSocialFeed();
+                }
+            }
+
+            refreshSocialFeed() {
+                const timeline = this.domElement.querySelector('.soc-timeline');
+                if(!timeline) return;
+                timeline.innerHTML = '';
+                
+                NetworkHub.socialPosts.forEach(post => {
+                    const block = document.createElement('div');
+                    block.className = 'soc-post';
+                    block.innerHTML = `<div class="soc-handle">${post.sender}</div><div>${post.content}</div>`;
+                    timeline.appendChild(block);
+                });
+            }
+        }
+
+        // Initialize Simulator Workspace on execution load
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+        };
+    </script>
+</body>
+</html>

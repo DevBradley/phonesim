@@ -1,0 +1,1351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Advanced Network & Device Workspace Simulator</title>
+    <style>
+        :root {
+            --bg-primary: #080808;
+            --bg-secondary: #111111;
+            --bg-tertiary: #181818;
+            --border-color: #222222;
+            --text-main: #e0e0e0;
+            --text-muted: #666666;
+            --accent: #444444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            user-select: none;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Control Panel */
+        #control-panel {
+            height: 160px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            z-index: 100;
+            padding: 10px;
+            gap: 15px;
+        }
+
+        .panel-section {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+
+        .panel-section h3 {
+            font-size: 10px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 3px;
+            letter-spacing: 1px;
+        }
+
+        #sys-controls { width: 240px; }
+        #sim-factory { width: 280px; }
+        #network-logger { flex-grow: 1; }
+
+        .log-stream {
+            font-size: 11px;
+            color: #00ff66;
+            font-family: 'Courier New', monospace;
+            overflow-y: auto;
+            flex-grow: 1;
+            background: #030303;
+            padding: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+        }
+        .log-entry { margin-bottom: 2px; white-space: nowrap; }
+
+        button, select, input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 3px;
+        }
+        button:hover { background: var(--border-color); }
+        input { cursor: text; }
+
+        /* Workspace Grid */
+        #workspace-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+            cursor: grab;
+        }
+        #workspace-container:active { cursor: grabbing; }
+        #workspace-canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 5000px; height: 5000px;
+        }
+
+        /* 3D Phone Chassis Wrapper Mapping */
+        .phone-wrapper {
+            position: absolute;
+            perspective: 1200px;
+        }
+
+        /* Model Footprints */
+        .phone-wrapper.m-6 { width: 240px; height: 470px; }
+        .phone-wrapper.m-7 { width: 240px; height: 470px; }
+        .phone-wrapper.m-8 { width: 240px; height: 470px; }
+        .phone-wrapper.m-8-plus { width: 270px; height: 520px; }
+        .phone-wrapper.m-x { width: 240px; height: 480px; }
+
+        .phone-card {
+            width: 100%; height: 100%;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.6s cubic-bezier(0.1, 0.8, 0.3, 1);
+        }
+        .phone-wrapper.flipped .phone-card { transform: rotateY(180deg); }
+
+        /* Dynamic Factory Color Matrix Schemes */
+        .color-white { --chassis-bg: #e5e5e5; --chassis-border: #ffffff; }
+        .color-grey { --chassis-bg: #555555; --chassis-border: #777777; }
+        .color-black { --chassis-bg: #141414; --chassis-border: #252525; }
+        .color-rose { --chassis-bg: #f3cfcd; --chassis-border: #f9dedc; }
+        .color-rose-gold { --chassis-bg: #e7b3a1; --chassis-border: #f0c3b3; }
+
+        .phone-face {
+            position: absolute;
+            width: 100%; height: 100%;
+            backface-visibility: hidden;
+            border-radius: 32px;
+            border: 4px solid var(--chassis-border);
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            background: #000;
+        }
+
+        .phone-front {
+            box-shadow: 0 15px 35px rgba(0,0,0,0.8);
+        }
+
+        /* Bezel Configurations */
+        .top-bezel { height: 35px; display: flex; justify-content: center; align-items: center; position: relative; }
+        .bottom-bezel { height: 40px; display: flex; justify-content: center; align-items: center; }
+        
+        .speaker-grille { width: 40px; height: 3px; background: #222; border-radius: 2px; }
+        .front-cam { width: 6px; height: 6px; background: #0f1424; border-radius: 50%; position: absolute; left: 75px; }
+        .home-button { width: 30px; height: 30px; border: 1px solid #333; border-radius: 50%; cursor: pointer; }
+
+        /* Model X Notch Structural Treatment */
+        .m-x .top-bezel {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            width: 110px; height: 18px; background: #000; border-radius: 0 0 12px 12px;
+            z-index: 50; padding: 0;
+        }
+        .m-x .front-cam { left: 20px; }
+        .m-x .bottom-bezel { display: none; }
+        .m-x .phone-face { border-radius: 40px; }
+
+        /* Screen Geometry and Wallpapers */
+        .screen {
+            flex-grow: 1;
+            border-radius: 4px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+        .m-x .screen { border-radius: 28px; }
+
+        /* Wallpapers definitions */
+        .wp-wp6 { background-image: linear-gradient(135deg, #1d2b64, #f8cdda); }
+        .wp-wp7 { background-image: linear-gradient(135deg, #0f2027, #203a43, #2c5364); }
+        .wp-wp8 { background-image: linear-gradient(135deg, #3a1c1c, #9d4edd); }
+        .wp-wpx { background-image: linear-gradient(180deg, #000000, #4f5d75); }
+        .wp-custom1 { background-image: repeating-linear-gradient(45deg, #111, #111 10px, #222 10px, #222 20px); }
+        .wp-custom2 { background-image: linear-gradient(45deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); }
+
+        .status-bar {
+            height: 18px; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px);
+            font-size: 9px; padding: 0 8px; display: flex; justify-content: space-between;
+            align-items: center; color: #fff; z-index: 40;
+        }
+        .m-x .status-bar { height: 26px; padding: 6px 14px 0 14px; }
+
+        .app-space { flex-grow: 1; position: relative; z-index: 10; }
+
+        /* Core UI App Viewport */
+        .app-view {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; display: none; flex-direction: column;
+        }
+        .app-view.active { display: flex; }
+        .app-view[data-app="launcher"] { background: transparent; }
+
+        .app-header {
+            height: 34px; background: #0c0c0c; border-bottom: 1px solid #1a1a1a;
+            display: flex; align-items: center; padding: 0 8px; justify-content: space-between;
+            font-size: 11px; font-weight: bold; color: #fff;
+        }
+        .app-body { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+        /* Launcher Home Grid System */
+        .launcher-grid {
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 15px 10px;
+        }
+        .app-icon {
+            display: flex; flex-direction: column; align-items: center; cursor: pointer; text-align: center;
+        }
+        .app-icon-glyph {
+            width: 42px; height: 42px; border-radius: 10px; background: rgba(20,20,20,0.85);
+            border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(5px);
+            display: flex; align-items: center; justify-content: center; font-size: 20px; margin-bottom: 4px;
+        }
+        .app-icon-label { font-size: 9px; color: #fff; text-shadow: 0 1px 2px #000; font-weight: 500; }
+
+        /* Split-Pane Message Architecture Layout */
+        .msg-layout-container { display: flex; width: 200%; height: 100%; transition: transform 0.25s ease; }
+        .msg-layout-container.in-chat { transform: translateX(-50%); }
+        .msg-pane-left, .msg-pane-right { width: 50%; height: 100%; display: flex; flex-direction: column; background: #000; }
+
+        .thread-row {
+            padding: 10px 8px; border-bottom: 1px solid #111; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+        }
+        .thread-row:hover { background: #0c0c0c; }
+        .thread-row .meta-line { display: flex; justify-content: space-between; font-size: 11px; font-weight: bold; }
+        .thread-row .preview-line { font-size: 10px; color: #777; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .chat-stream { flex-grow: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; background: #050505; }
+        .chat-bubble { max-width: 80%; padding: 6px 10px; border-radius: 12px; font-size: 11px; line-height: 14px; word-break: break-all; }
+        .chat-bubble.sent { background: #007aff; color: white; align-self: flex-end; border-bottom-right-radius: 2px; }
+        .chat-bubble.rcvd { background: #26262b; color: white; align-self: flex-start; border-bottom-left-radius: 2px; }
+
+        /* Hamburger Droplist Menu Structure */
+        .hamburger-menu-trigger { font-size: 14px; padding: 0 6px; cursor: pointer; color: #fff; }
+        .hamburger-dropdown {
+            position: absolute; top: 34px; right: 5px; background: #1a1a1e; border: 1px solid #333;
+            border-radius: 6px; display: none; flex-direction: column; z-index: 200; width: 130px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        .hamburger-dropdown div { padding: 8px; font-size: 10px; cursor: pointer; border-bottom: 1px solid #2a2a30; color: #eee; }
+        .hamburger-dropdown div:last-child { border-bottom: none; }
+        .hamburger-dropdown div:hover { background: #2a2a32; }
+
+        /* Phone & Dialer Interface */
+        .dialer-output { background: #000; color: #fff; padding: 10px; text-align: center; font-size: 20px; min-height: 40px; }
+        .dialer-grid-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px 25px; }
+        .dialer-circle {
+            aspect-ratio: 1; border-radius: 50%; background: #1c1c1e; display: flex; align-items: center;
+            justify-content: center; font-size: 18px; color: #fff; cursor: pointer;
+        }
+        .dialer-circle:hover { background: #2c2c2e; }
+
+        /* Social Network Media Layout (Immersive Video Card Flow) */
+        .ns-feed { flex-grow: 1; overflow-y: scroll; snap-type: y mandatory; background: #000; }
+        .ns-card {
+            height: 100%; width: 100%; snap-align: start; position: relative; display: flex; flex-direction: column; justify-content: flex-end;
+            background-size: cover; background-position: center; padding: 12px; box-shadow: inset 0 -80px 40px rgba(0,0,0,0.8);
+        }
+        .ns-overlay-details { color: #fff; display: flex; flex-direction: column; gap: 4px; max-width: 80%; }
+        .ns-user-tag { font-weight: bold; font-size: 12px; text-shadow: 0 1px 2px #000; }
+        .ns-desc-text { font-size: 11px; opacity: 0.9; text-shadow: 0 1px 2px #000; }
+        
+        .ns-action-sidebar {
+            position: absolute; right: 8px; bottom: 60px; display: flex; flex-direction: column; gap: 14px; align-items: center;
+        }
+        .ns-action-icon { width: 32px; height: 32px; background: rgba(30,30,30,0.6); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; cursor: pointer; }
+        .ns-action-icon:hover { background: rgba(255,255,255,0.2); }
+        .ns-action-lbl { font-size: 9px; color: #eee; margin-top: -10px; text-shadow: 0 1px 2px #000; }
+
+        /* Flip Panel Rear View Setup */
+        .phone-back {
+            transform: rotateY(180deg); color: #fff; padding: 20px 15px; display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+        }
+        .cam-housing { background: #000; border: 1px solid #333; display: flex; align-items: center; justify-content: center; }
+        
+        /* Specific Rear Configurations */
+        .m-6 .cam-housing, .m-7 .cam-housing, .m-8 .cam-housing { width: 24px; height: 24px; border-radius: 50%; margin-right: auto; }
+        .m-8-plus .cam-housing { width: 46px; height: 22px; border-radius: 11px; margin-right: auto; gap: 4px; }
+        .m-x .cam-housing { width: 22px; height: 46px; border-radius: 11px; margin-right: auto; flex-direction: column; gap: 4px; }
+        .lens { width: 8px; height: 8px; background: #040914; border-radius: 50%; border: 1px solid #1c1c1c; }
+
+        .back-controls { width: 100%; display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.4); padding: 10px; border-radius: 8px; }
+        .back-controls div { display: flex; flex-direction: column; gap: 2px; font-size: 10px; color: #aaa; }
+
+        /* Generic Framework Elements */
+        .utility-row { display: flex; gap: 4px; padding: 4px 6px; }
+        .flex-fill { flex-grow: 1; }
+        .inc-call-overlay {
+            position: absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95);
+            display:none; flex-direction:column; justify-content:center; align-items:center; z-index:500;
+        }
+        .inc-call-overlay.active { display: flex; }
+        
+        .spatial-hud {
+            position: absolute; bottom: -38px; left: 0; width: 100%;
+            text-align: center; font-size: 9px; color: var(--text-muted); pointer-events: none; line-height: 12px;
+        }
+        .flip-tab {
+            position: absolute; top: 8px; right: 8px; z-index: 1000;
+            background: rgba(0,0,0,0.7); border: 1px solid #444; padding: 2px 4px;
+            font-size: 8px; border-radius: 3px; color: #fff; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. Master Control Core Network Panel -->
+    <div id="control-panel">
+        <div class="panel-section" id="sys-controls">
+            <h3>Hardware Provisioner</h3>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+                <div style="display:flex; gap:4px;">
+                    <select id="spawn-model" class="flex-fill">
+                        <option value="m-6">Model 6 (Standard Alloy)</option>
+                        <option value="m-7">Model 7 (Compact)</option>
+                        <option value="m-8">Model 8 (Glass Chassis)</option>
+                        <option value="m-8-plus">Model 8 Plus (Widescreen)</option>
+                        <option value="m-x">Model X (Edge-To-Edge Notch)</option>
+                    </select>
+                    <select id="spawn-color" style="width: 80px;">
+                        <option value="color-black">Black</option>
+                        <option value="color-white">White</option>
+                        <option value="color-grey">Grey</option>
+                        <option value="color-rose">Rose</option>
+                        <option value="color-rose-gold">Rose Gold</option>
+                    </select>
+                </div>
+                <button onclick="Workspace.spawnDevice()">PROVISION DEVICE HARDWARE</button>
+            </div>
+        </div>
+
+        <div class="panel-section" id="sim-factory">
+            <h3>SIM Card Carrier Hub</h3>
+            <div style="display: flex; flex-direction: column; gap: 6px; justify-content: center; flex-grow: 1;">
+                <div class="utility-row" style="padding:0;">
+                    <input type="text" id="sim-msisdn" placeholder="MSISDN Line Number" maxlength="10" class="flex-fill">
+                    <button onclick="NetworkHub.generateSim()">CREATE</button>
+                </div>
+                <div style="font-size: 10px; color: var(--text-muted); text-align: center;">Active Carrier Allocation: <span id="sim-count" style="color:#fff; font-weight:bold;">0</span></div>
+            </div>
+        </div>
+
+        <div class="panel-section" id="network-logger">
+            <h3>Signal Delay Network Routing Matrix Logs</h3>
+            <div class="log-stream" id="log-container"></div>
+        </div>
+    </div>
+
+    <!-- 2. Interactive Infinite Workspace Grid Container -->
+    <div id="workspace-container">
+        <div id="workspace-canvas"></div>
+    </div>
+
+    <script>
+        // Centralized Global Switching Hub State
+        const NetworkHub = {
+            sims: {},
+            socialAccounts: {},
+            socialPosts: [],
+            activeCalls: {},
+
+            init() {
+                this.socialAccounts["@net_ops"] = { handle: "@net_ops" };
+                this.socialAccounts["@pixel_traveler"] = { handle: "@pixel_traveler" };
+                
+                // Content assets using abstract procedural CSS gradients as simulated video assets
+                this.socialPosts.push({ sender: "@net_ops", desc: "System framework operating nominal across global data arrays.", bg: "linear-gradient(45deg, #111, #444)" });
+                this.socialPosts.push({ sender: "@pixel_traveler", desc: "Stunning rendering performance out in the grid cluster vector spaces today!", bg: "linear-gradient(135deg, #f5f7fa, #c3cfe2)" });
+                this.log("Matrix", "Network switching router layers fully online.");
+            },
+
+            log(module, text) {
+                const container = document.getElementById('log-container');
+                const entry = document.createElement('div');
+                entry.className = 'log-entry';
+                entry.innerText = `[${module}] ${text}`;
+                container.appendChild(entry);
+                container.scrollTop = container.scrollHeight;
+            },
+
+            generateSim() {
+                const input = document.getElementById('sim-msisdn');
+                let num = input.value.trim();
+                if(!num) num = Math.floor(200000 + Math.random() * 700000).toString();
+                if(this.sims[num]) return alert("Line asset conflict.");
+                
+                this.sims[num] = { msisdn: num, allocatedTo: null };
+                this.log("Carrier", `Provisioned Subscriber Card Link: +1 (${num})`);
+                input.value = '';
+                document.getElementById('sim-count').innerText = Object.keys(this.sims).length;
+                Workspace.refreshAllTrays();
+            },
+
+            getDistanceMetrics(idA, idB) {
+                const pA = Workspace.devices[idA];
+                const pB = Workspace.devices[idB];
+                if(!pA || !pB) return { distance: 0, latency: 5 };
+                const dx = pA.x - pB.x;
+                const dy = pA.y - pB.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                return { distance: Math.round(dist), latency: Math.max(10, Math.round((dist / 100) * 15)) };
+            },
+
+            routeSMS(from, to, text, originId) {
+                const targetSim = this.sims[to];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("Router", `Packet bounce: +1 (${to}) is unreachable.`);
+                    return;
+                }
+                const destId = targetSim.allocatedTo;
+                const metrics = this.getDistanceMetrics(originId, destId);
+                this.log("Network", `Routing SMS Packets [${from} -> ${to}] | Vector Link: ${metrics.distance}px | Delay: ${metrics.latency}ms`);
+                
+                setTimeout(() => {
+                    const dev = Workspace.devices[destId];
+                    if(dev) dev.receiveSMS(from, text);
+                }, metrics.latency);
+            },
+
+            initiateCall(from, to, originId) {
+                const targetSim = this.sims[to];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("Switchboard", `Call drop: +1 (${to}) has no routing destination.`);
+                    return "DEAD";
+                }
+                const destId = targetSim.allocatedTo;
+                if(destId === originId) return "LOOPBACK";
+                
+                const metrics = this.getDistanceMetrics(originId, destId);
+                this.log("Switchboard", `Trunk Connection Request [${from} -> ${to}] | Path Delay: ${metrics.latency}ms`);
+                
+                setTimeout(() => {
+                    const dev = Workspace.devices[destId];
+                    if(dev) dev.triggerIncomingCall(from, originId);
+                }, metrics.latency);
+                return "ROUTED";
+            },
+
+            connectCall(idA, idB) {
+                this.activeCalls[idA] = idB;
+                this.activeCalls[idB] = idA;
+                this.log("Switchboard", `Circuit Handshake Locked: Device #${idA} <=> Device #${idB}`);
+            },
+
+            terminateCall(id) {
+                const peerId = this.activeCalls[id];
+                delete this.activeCalls[id];
+                if(peerId) {
+                    delete this.activeCalls[peerId];
+                    if(Workspace.devices[peerId]) Workspace.devices[peerId].hangupCall(false);
+                }
+            },
+
+            publishPost(sender, desc, originId) {
+                // Generates random abstract background for TikTok/Instagram styled layout cards
+                const gradients = [
+                    "linear-gradient(45deg, #ff9a9e 0%, #fecfef 99%)",
+                    "linear-gradient(120deg, #a1c4fd 0%, #c2e9fb 100%)",
+                    "linear-gradient(to top, #30cfd0 0%, #330867 100%)",
+                    "linear-gradient(to right, #4facfe 0%, #00f2fe 100%)",
+                    "linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                ];
+                const randBg = gradients[Math.floor(Math.random() * gradients.length)];
+                this.socialPosts.unshift({ sender, desc, bg: randBg });
+                
+                Object.values(Workspace.devices).forEach(dev => {
+                    const metrics = this.getDistanceMetrics(originId, dev.id);
+                    setTimeout(() => { dev.refreshSocialFeed(); }, metrics.latency);
+                });
+            }
+        };
+
+        // Spatial Node View Manager
+        const Workspace = {
+            devices: {},
+            deviceCount: 0,
+            canvas: null,
+            panX: 80, panY: 40,
+            isDragging: false,
+            startX: 0, startY: 0,
+
+            init() {
+                this.canvas = document.getElementById('workspace-canvas');
+                const container = document.getElementById('workspace-container');
+
+                container.addEventListener('mousedown', (e) => {
+                    if(e.target === container || e.target === this.canvas) {
+                        this.isDragging = true;
+                        this.startX = e.clientX - this.panX;
+                        this.startY = e.clientY - this.panY;
+                    }
+                });
+                window.addEventListener('mousemove', (e) => {
+                    if (!this.isDragging) return;
+                    this.panX = e.clientX - this.startX;
+                    this.panY = e.clientY - this.startY;
+                    this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px)`;
+                });
+                window.addEventListener('mouseup', () => this.isDragging = false);
+                this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px)`;
+
+                // Instantiate entry hardware configs
+                this.spawnDevice(150, 80, "m-6", "color-white");
+                this.spawnDevice(550, 80, "m-x", "color-black");
+            },
+
+            spawnDevice(x = null, y = null, forcedModel = null, forcedColor = null) {
+                this.deviceCount++;
+                const id = this.deviceCount;
+                const posX = x !== null ? x : Math.abs(this.panX) + 120 + (Math.random() * 80);
+                const posY = y !== null ? y : Math.abs(this.panY) + 60 + (Math.random() * 40);
+                const model = forcedModel || document.getElementById('spawn-model').value;
+                const color = forcedColor || document.getElementById('spawn-color').value;
+
+                // Validation rule for Model X color matrix
+                let integratedColor = color;
+                if(model === 'm-x' && color !== 'color-black' && color !== 'color-white') {
+                    integratedColor = 'color-black'; 
+                }
+
+                const phone = new PhoneInstance(id, posX, posY, model, integratedColor);
+                this.devices[id] = phone;
+                this.canvas.appendChild(phone.domElement);
+                NetworkHub.log("Workspace", `Hardware Node #${id} online: Type [${model}] Finish [${integratedColor}]`);
+            },
+
+            refreshAllTrays() {
+                Object.values(this.devices).forEach(d => d.populateSimSelector());
+            }
+        };
+
+        // Realized Virtual Device Blueprint Core Component
+        class PhoneInstance {
+            constructor(id, x, y, model, color) {
+                this.id = id; this.x = x; this.y = y; this.model = model; this.color = color;
+                this.currentSim = null;
+                this.activeApp = 'launcher';
+                this.activeCallData = null;
+                this.activeChatNum = null;
+                this.callTimerInterval = null;
+                
+                // Messaging Contact Ecosystem structures
+                this.contacts = {}; // Local scope phonebook map: { number: { name: "Label", exchanged: true/false } }
+                this.blockedNumbers = new Set();
+                
+                // NetSpace context caches
+                this.socialAccountsCache = [];
+                this.activeSocialUser = null;
+
+                // Establish default wallpaper mappings based on hardware profile types
+                this.currentWallpaper = 'wp-' + this.model; 
+
+                this.domElement = document.createElement('div');
+                this.domElement.className = `phone-wrapper ${this.model} ${this.color}`;
+                this.domElement.style.left = `${this.x}px`;
+                this.domElement.style.top = `${this.y}px`;
+
+                this.buildDeviceStructure();
+                this.bindInterfaceEvents();
+                this.populateSimSelector();
+                this.setWallpaper(this.currentWallpaper);
+                this.updateStatusBar();
+                
+                setInterval(() => {
+                    const now = new Date();
+                    const t = this.domElement.querySelector('.sim-time');
+                    if(t) t.innerText = `${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+                }, 1000);
+            }
+
+            buildDeviceStructure() {
+                this.domElement.innerHTML = `
+                    <div class="flip-tab">FLIP</div>
+                    <div class="phone-card">
+                        <!-- FRONT UI LAYER PANEL -->
+                        <div class="phone-face phone-front">
+                            <div class="top-bezel"><div class="front-cam"></div><div class="speaker-grille"></div></div>
+                            <div class="screen">
+                                <div class="status-bar">
+                                    <div class="status-left"><span class="carrier-tag">NO TRANSCEIVER</span></div>
+                                    <div class="status-right"><span class="sim-time">00:00</span><span> 🔋100%</span></div>
+                                </div>
+                                <div class="app-space">
+                                    
+                                    <!-- Direct Pipeline Ringing Call Overlay Layout Component -->
+                                    <div class="inc-call-overlay">
+                                        <div style="font-size:10px; color:#999; margin-bottom:10px; letter-spacing:1px;">INCOMING CONNECTOR REQUEST</div>
+                                        <div class="inc-caller-id" style="font-size:16px; font-weight:bold; margin-bottom:25px;">+1 (000)</div>
+                                        <div style="display:flex; gap:12px;">
+                                            <button class="accept-btn" style="background:#155215; border-color:#207a20;">CONNECT</button>
+                                            <button class="decline-btn" style="background:#611818; border-color:#8c2323;">DISMISS</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Launcher View screen -->
+                                    <div class="app-view active" data-app="launcher">
+                                        <div class="launcher-grid">
+                                            <div class="app-icon" data-launch="phone"><div class="app-icon-glyph">📞</div><div class="app-icon-label">Phone</div></div>
+                                            <div class="app-icon" data-launch="messages"><div class="app-icon-glyph">💬</div><div class="app-icon-label">Messages</div></div>
+                                            <div class="app-icon" data-launch="netspace"><div class="app-icon-glyph">🎵</div><div class="app-icon-label">NetSpace</div></div>
+                                            <div class="app-icon" data-launch="settings"><div class="app-icon-glyph">⚙️</div><div class="app-icon-label">Settings</div></div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Transponder Phone Dial Screen View -->
+                                    <div class="app-view" data-app="phone">
+                                        <div class="app-header"><span>Phone System</span><button class="app-close">X</button></div>
+                                        <div class="app-body">
+                                            <div class="dialer-output"></div>
+                                            <div class="dialer-grid-pad">
+                                                <div class="dialer-circle">1</div><div class="dialer-circle">2</div><div class="dialer-circle">3</div>
+                                                <div class="dialer-circle">4</div><div class="dialer-circle">5</div><div class="dialer-circle">6</div>
+                                                <div class="dialer-circle">7</div><div class="dialer-circle">8</div><div class="dialer-circle">9</div>
+                                                <div class="dialer-circle" style="font-size:12px;">+</div><div class="dialer-circle">0</div><div class="dialer-circle" style="font-size:12px;">CLR</div>
+                                            </div>
+                                            <div style="padding:0 25px; display:flex; flex-direction:column; gap:6px;">
+                                                <button class="phone-call-trigger" style="background:#1c7a1c; font-weight:bold; padding:8px;">ENGAGE LINK</button>
+                                                <div class="phone-call-card-exchange" style="display:none; text-align:center;"><button class="phone-exchange-btn" style="background:#333; font-size:10px; width:100%;">📇 SHARE CONTACT CARD</button></div>
+                                            </div>
+                                            <div class="active-call-state" style="display:none; margin:10px 25px; border:1px solid #222; padding:8px; background:#050505; text-align:center; border-radius:6px;">
+                                                <div class="call-status-label" style="font-size:11px; color:#00ff66;">CONNECTING TRUNK</div>
+                                                <div class="call-timer" style="font-size:14px; font-weight:bold; margin:4px 0;">00:00</div>
+                                                <button class="phone-hangup-trigger" style="background:#7a1c1c; width:100%; padding:4px; font-size:10px;">TERMINATE CONNECTION</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Split-Pane Fluid Messaging App View layout Frame -->
+                                    <div class="app-view" data-app="messages">
+                                        <div class="app-header">
+                                            <button class="msg-back-node" style="visibility:hidden;"><-</button>
+                                            <span class="msg-title-text">Carrier SMS</span>
+                                            <div style="position:relative; display:flex; align-items:center;">
+                                                <span class="hamburger-menu-trigger" style="display:none;">☰</span>
+                                                <div class="hamburger-dropdown">
+                                                    <div class="hb-add-contact">Save Contact</div>
+                                                    <div class="hb-share-contact">Share Card</div>
+                                                    <div class="hb-block-user" style="color:#ff4444;">Block Identity</div>
+                                                </div>
+                                                <button class="app-close" style="margin-left:4px;">X</button>
+                                            </div>
+                                        </div>
+                                        <div class="app-body" style="overflow:hidden;">
+                                            <div class="msg-layout-container">
+                                                <!-- LEFT PANE: THREAD LISTS -->
+                                                <div class="msg-pane-left">
+                                                    <div class="utility-row">
+                                                        <input type="text" class="msg-target-input" placeholder="Line Target Address" style="width:100%;">
+                                                        <button class="msg-open-thread">LAUNCH</button>
+                                                    </div>
+                                                    <div class="msg-threads-list-anchor" style="flex-grow:1; overflow-y:auto;"></div>
+                                                </div>
+                                                <!-- RIGHT PANE: PERSISTENT SECURE CONVERSATION VIEW -->
+                                                <div class="msg-pane-right">
+                                                    <div class="chat-stream"></div>
+                                                    <div class="utility-row">
+                                                        <input type="text" class="chat-msg-input" placeholder="Send secure packet..." class="flex-fill">
+                                                        <button class="chat-send-trigger">SEND</button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Immersive NetSpace Video Card Feed Layout -->
+                                    <div class="app-view" data-app="netspace">
+                                        <div class="app-header"><span>NetSpace Media Feed</span><button class="app-close">X</button></div>
+                                        <div class="soc-acc-bar"></div>
+                                        <div class="app-body" style="position:relative; background:#000;">
+                                            <div class="soc-auth-screen" style="display:none; padding:20px; flex-direction:column; gap:8px; justify-content:center; height:100%;">
+                                                <div style="font-size:11px; color:#888; text-align:center;">AUTHENTICATE IDENTITY VECTOR</div>
+                                                <input type="text" class="soc-user-input" placeholder="@handle">
+                                                <button class="soc-login-trigger" style="background:#007aff; font-weight:bold;">INITIALIZE SECURE TOKEN</button>
+                                            </div>
+                                            <div class="soc-main-screen" style="display:none; flex-direction:column; height:100%;">
+                                                <div class="utility-row" style="background:rgba(0,0,0,0.6); position:absolute; top:0; left:0; width:100%; z-index:40;">
+                                                    <input type="text" class="soc-post-input" placeholder="Broadcast media snippet description..." class="flex-fill">
+                                                    <button class="soc-post-trigger">PUBLISH</button>
+                                                </div>
+                                                <div class="ns-feed"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Device Specific Settings Config Customizer Application View -->
+                                    <div class="app-view" data-app="settings">
+                                        <div class="app-header"><span>Settings Matrix</span><button class="app-close">X</button></div>
+                                        <div class="app-body" style="padding:10px; gap:12px;">
+                                            <div>
+                                                <label style="font-size:9px; color:var(--text-muted);">SELECT MATTE WALLPAPER SPECIFICATION</label>
+                                                <select class="settings-wp-select" style="width:100%; margin-top:3px;">
+                                                    <option value="wp-m-6">Default Model 6 Gradient</option>
+                                                    <option value="wp-m-7">Default Model 7 Dusk</option>
+                                                    <option value="wp-m-8">Default Model 8 Neon</option>
+                                                    <option value="wp-m-8-plus">Default Model 8 Plus Matrix</option>
+                                                    <option value="wp-m-x">Default Model X True Dark</option>
+                                                    <option value="wp-custom1">Industrial Monochromatic Grid</option>
+                                                    <option value="wp-custom2">Pastel Aura Dispersion</option>
+                                                </select>
+                                            </div>
+                                            <div style="border-top:1px solid #222; padding-top:8px;">
+                                                <label style="font-size:9px; color:var(--text-muted);">LOCAL SCOPE PHONEBOOK DIRECTORY</label>
+                                                <div class="settings-contacts-list" style="max-height:120px; overflow-y:auto; margin-top:4px; font-size:10px; background:#050505; border:1px solid #222; padding:4px;"></div>
+                                            </div>
+                                            <button class="wipe-data-trigger" style="background:#4a1414; margin-top:auto;">FACTORY ERASE DEVICE VOLATILE STORAGE</button>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            <div class="bottom-bezel"><div class="home-button"></div></div>
+                        </div>
+
+                        <!-- REAR HARDWARE BACKING PANEL PANEL -->
+                        <div class="phone-face phone-back">
+                            <div class="cam-housing"><div class="lens"></div></div>
+                            <div style="font-size:10px; font-weight:bold; text-align:center; color:#888;">FIELD LOGISTICS HARDWARE ID: NODE-0${this.id}</div>
+                            <div class="back-controls">
+                                <div>
+                                    <label>DYNAMIC COLOR CASING MATRIX</label>
+                                    <select class="back-color-switcher">
+                                        <option value="color-black">Industrial Black</option>
+                                        <option value="color-white">Alabaster White</option>
+                                        <option value="color-grey">Anodized Grey</option>
+                                        <option value="color-rose">Blossom Rose</option>
+                                        <option value="color-rose-gold">Refined Rose Gold</option>
+                                    </select>
+                                </div>
+                                <div style="margin-top:4px;">
+                                    <label>CARRIER INTERFACING TRACK SYSTEM</label>
+                                    <select class="sim-selector-node" style="width:100%;"></select>
+                                    <button class="sim-insert-trigger" style="margin-top:4px; width:100%;">RELOAD CHASSIS INTEGRATION BUS</button>
+                                </div>
+                            </div>
+                            <div style="font-size:8px; opacity:0.3; letter-spacing:1px;">TOPOLOGY FIELD LABS DESIGN</div>
+                        </div>
+                    </div>
+                    <div class="spatial-hud">
+                        NODE-0${this.id} [${this.model.toUpperCase()}]<br>
+                        <span class="hud-coords">(${Math.round(this.x)}, ${Math.round(this.y)})</span>
+                    </div>
+                `;
+            }
+
+            bindInterfaceEvents() {
+                // Flip Transformation Mechanism Trigger Linkage
+                this.domElement.querySelector('.flip-tab').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.domElement.classList.toggle('flipped');
+                });
+
+                // Casing Color Switcher Mechanics
+                const colorSelect = this.domElement.querySelector('.back-color-switcher');
+                colorSelect.value = this.color;
+                colorSelect.addEventListener('change', () => {
+                    let nextColor = colorSelect.value;
+                    if(this.model === 'm-x' && nextColor !== 'color-black' && nextColor !== 'color-white') {
+                        alert("Model X only permits configurations using black or white material profiles.");
+                        colorSelect.value = this.color;
+                        return;
+                    }
+                    this.domElement.classList.remove(this.color);
+                    this.color = nextColor;
+                    this.domElement.classList.add(this.color);
+                    NetworkHub.log("Hardware OS", `Node #${this.id} hot-swapped casing aesthetic array profile wrapper to: ${this.color}`);
+                });
+
+                // Position Draggable Vector Management Handlers
+                let offset = {x:0, y:0};
+                const dragBegin = (e) => {
+                    if(e.target.closest('button') || e.target.closest('input') || e.target.closest('select') || e.target.className === 'flip-tab' || e.target.className === 'hamburger-menu-trigger') return;
+                    e.stopPropagation();
+                    offset.x = e.clientX - this.x;
+                    offset.y = e.clientY - this.y;
+                    window.addEventListener('mousemove', dragMovement);
+                    window.addEventListener('mouseup', dragEnd);
+                };
+                const dragMovement = (e) => {
+                    this.x = e.clientX - offset.x;
+                    this.y = e.clientY - offset.y;
+                    this.domElement.style.left = `${this.x}px`;
+                    this.domElement.style.top = `${this.y}px`;
+                    this.domElement.querySelector('.hud-coords').innerText = `(${Math.round(this.x)}, ${Math.round(this.y)})`;
+                };
+                const dragEnd = () => {
+                    window.removeEventListener('mousemove', dragMovement);
+                    window.removeEventListener('mouseup', dragEnd);
+                };
+                this.domElement.addEventListener('mousedown', dragBegin);
+
+                // App Navigation Controls Routing Maps
+                this.domElement.querySelector('.home-button').addEventListener('click', () => this.switchApp('launcher'));
+                this.domElement.querySelectorAll('[data-launch]').forEach(i => {
+                    i.addEventListener('click', () => this.switchApp(i.dataset.launch));
+                });
+                this.domElement.querySelectorAll('.app-close').forEach(b => {
+                    b.addEventListener('click', () => this.switchApp('launcher'));
+                });
+
+                // Wallpaper selector mechanism mapping
+                const wpSelect = this.domElement.querySelector('.settings-wp-select');
+                wpSelect.value = this.currentWallpaper;
+                wpSelect.addEventListener('change', () => this.setWallpaper(wpSelect.value));
+
+                // SIM Slot Integration Handler Routine Trigger
+                const simSelector = this.domElement.querySelector('.sim-selector-node');
+                this.domElement.querySelector('.sim-insert-trigger').addEventListener('click', () => {
+                    const nextSim = simSelector.value;
+                    if(this.currentSim) {
+                        NetworkHub.sims[this.currentSim].allocatedTo = null;
+                    }
+                    if(nextSim === "NONE") {
+                        this.currentSim = null;
+                    } else {
+                        if(NetworkHub.sims[nextSim].allocatedTo) {
+                            const oldOwner = Workspace.devices[NetworkHub.sims[nextSim].allocatedTo];
+                            if(oldOwner) { oldOwner.currentSim = null; oldOwner.updateStatusBar(); }
+                        }
+                        this.currentSim = nextSim;
+                        NetworkHub.sims[nextSim].allocatedTo = this.id;
+                    }
+                    this.updateStatusBar();
+                    Workspace.refreshAllTrays();
+                });
+
+                // Phone Dialer Pad Array Events Configurations Setup
+                const out = this.domElement.querySelector('.dialer-output');
+                this.domElement.querySelectorAll('.dialer-circle').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        if(btn.innerText === 'CLR') out.innerText = '';
+                        else out.innerText += btn.innerText;
+                    });
+                });
+
+                this.domElement.querySelector('.phone-call-trigger').addEventListener('click', () => {
+                    const num = out.innerText.trim();
+                    if(!this.currentSim) return alert("TRANSPONDER OFFLINE. CORE TRAYS REQUIRE ALLOCATED SIM NUMBER CARD PROFILE.");
+                    if(!num) return;
+
+                    this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                    const activeBox = this.domElement.querySelector('.active-call-state');
+                    activeBox.style.display = 'block';
+                    activeBox.querySelector('.call-status-label').innerText = "SEEKING CARRIER ROUTE...";
+
+                    const res = NetworkHub.initiateCall(this.currentSim, num, this.id);
+                    if(res === "DEAD") activeBox.querySelector('.call-status-label').innerText = "SIGNAL DROPPED";
+                    else if(res === "LOOPBACK") activeBox.querySelector('.call-status-label').innerText = "LINE BUSY INTERNAL ERROR";
+                    else {
+                        this.activeCallData = { role: 'caller', target: num };
+                        this.checkExchangeButtonVisibility();
+                    }
+                });
+
+                this.domElement.querySelector('.phone-hangup-trigger').addEventListener('click', () => this.hangupCall(true));
+
+                // Call Card Exchange Mechanics Event Hook
+                this.domElement.querySelector('.phone-exchange-btn').addEventListener('click', () => this.executeContactExchangeAction());
+
+                // Overlay Controls Responses
+                this.domElement.querySelector('.accept-btn').addEventListener('click', () => {
+                    this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                    this.switchApp('phone');
+                    this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                    const stateBox = this.domElement.querySelector('.active-call-state');
+                    stateBox.style.display = 'block';
+                    stateBox.querySelector('.call-status-label').innerText = "ENCRYPTED WAVEFORM SECURE";
+                    NetworkHub.connectCall(this.id, this.activeCallData.peerPhoneId);
+                    this.startCallTimer();
+                    this.checkExchangeButtonVisibility();
+                });
+
+                this.domElement.querySelector('.decline-btn').addEventListener('click', () => {
+                    this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                    NetworkHub.terminateCall(this.id);
+                    this.activeCallData = null;
+                });
+
+                // Split Pane Messaging Workflow Event Controllers
+                const msgLayout = this.domElement.querySelector('.msg-layout-container');
+                const backNode = this.domElement.querySelector('.msg-back-node');
+                const hamburger = this.domElement.querySelector('.hamburger-menu-trigger');
+                const dropMenu = this.domElement.querySelector('.hamburger-dropdown');
+
+                this.domElement.querySelector('.msg-open-thread').addEventListener('click', () => {
+                    const target = this.domElement.querySelector('.msg-target-input').value.trim();
+                    if(!target) return;
+                    this.openChatWorkspaceThread(target);
+                });
+
+                backNode.addEventListener('click', () => {
+                    msgLayout.classList.remove('in-chat');
+                    backNode.style.visibility = 'hidden';
+                    hamburger.style.display = 'none';
+                    dropMenu.style.display = 'none';
+                    this.activeChatNum = null;
+                    this.domElement.querySelector('.msg-title-text').innerText = "Carrier SMS";
+                    this.renderMessageThreadsList();
+                });
+
+                hamburger.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dropMenu.style.display = dropMenu.style.display === 'flex' ? 'none' : 'flex';
+                });
+
+                document.addEventListener('click', () => { dropMenu.style.display = 'none'; });
+
+                // Hamburger Context Subsystem Interactions Rules
+                dropMenu.querySelector('.hb-add-contact').addEventListener('click', () => {
+                    if(!this.activeChatNum) return;
+                    let customName = prompt("Assign localized directory name card identifier:", this.resolveContactLabel(this.activeChatNum));
+                    if(customName) {
+                        this.registerLocalContactRecord(this.activeChatNum, customName, true);
+                        this.openChatWorkspaceThread(this.activeChatNum); // Dynamic frame render refresh update hook execution
+                        this.refreshSettingsDirectoryList();
+                    }
+                });
+
+                dropMenu.querySelector('.hb-share-contact').addEventListener('click', () => {
+                    this.executeContactExchangeAction();
+                });
+
+                dropMenu.querySelector('.hb-block-user').addEventListener('click', () => {
+                    if(!this.activeChatNum) return;
+                    this.blockedNumbers.add(this.activeChatNum);
+                    NetworkHub.log("Hardware OS", `Node #${this.id} appended blocking restriction rule on data transponder line: +1 (${this.activeChatNum})`);
+                    backNode.click();
+                });
+
+                this.domElement.querySelector('.chat-send-trigger').addEventListener('click', () => {
+                    const inp = this.domElement.querySelector('.chat-msg-input');
+                    const txt = inp.value.trim();
+                    if(!txt || !this.currentSim || !this.activeChatNum) return;
+
+                    this.saveLocalSMSMessage(this.currentSim, this.activeChatNum, 'sent', txt);
+                    NetworkHub.routeSMS(this.currentSim, this.activeChatNum, txt, this.id);
+                    inp.value = '';
+                    this.openChatWorkspaceThread(this.activeChatNum);
+                });
+
+                // NetSpace Application Media UI Trigger Framework Operations Bindings
+                this.domElement.querySelector('.soc-login-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.soc-user-input');
+                    let handle = input.value.trim();
+                    if(!handle) return;
+                    if(!handle.startsWith('@')) handle = '@' + handle;
+                    
+                    if(!NetworkHub.socialAccounts[handle]) NetworkHub.socialAccounts[handle] = { handle };
+                    if(!this.socialAccountsCache.includes(handle)) this.socialAccountsCache.push(handle);
+                    this.activeSocialUser = handle;
+                    input.value = '';
+                    this.renderSocialAppLayout();
+                });
+
+                this.domElement.querySelector('.soc-post-trigger').addEventListener('click', () => {
+                    const inp = this.domElement.querySelector('.soc-post-input');
+                    const desc = inp.value.trim();
+                    if(!desc || !this.activeSocialUser) return;
+                    NetworkHub.publishPost(this.activeSocialUser, desc, this.id);
+                    inp.value = '';
+                });
+
+                // Global Volatile Storage Erasure Protocol Setup
+                this.domElement.querySelector('.wipe-data-trigger').addEventListener('click', () => {
+                    this.contacts = {};
+                    this.blockedNumbers.clear();
+                    this.socialAccountsCache = [];
+                    this.activeSocialUser = null;
+                    if(this.currentSim) { NetworkHub.sims[this.currentSim].allocatedTo = null; this.currentSim = null; }
+                    this.updateStatusBar();
+                    this.switchApp('launcher');
+                    this.refreshSettingsDirectoryList();
+                    NetworkHub.log("Hardware OS", `Node Device #${this.id} cleared out system registers.`);
+                });
+            }
+
+            setWallpaper(wpClass) {
+                this.currentWallpaper = wpClass;
+                const s = this.domElement.querySelector('.screen');
+                s.className = "screen"; // flush active list array items matrix
+                s.classList.add(wpClass);
+            }
+
+            switchApp(appName) {
+                this.activeApp = appName;
+                this.domElement.querySelectorAll('.app-view').forEach(v => {
+                    v.classList.remove('active');
+                    if(v.dataset.app === appName) v.classList.add('active');
+                });
+
+                // Frame transition processing execution routines elements tracking configurations hook rules
+                if(appName === 'messages') {
+                    // Reset window context view safely to avoid visual state issues
+                    const msgLayout = this.domElement.querySelector('.msg-layout-container');
+                    const backNode = this.domElement.querySelector('.msg-back-node');
+                    const hamburger = this.domElement.querySelector('.hamburger-menu-trigger');
+                    
+                    if(this.activeChatNum) {
+                        msgLayout.classList.add('in-chat');
+                        backNode.style.visibility = 'visible';
+                        hamburger.style.display = 'block';
+                        this.openChatWorkspaceThread(this.activeChatNum);
+                    } else {
+                        msgLayout.classList.remove('in-chat');
+                        backNode.style.visibility = 'hidden';
+                        hamburger.style.display = 'none';
+                        this.domElement.querySelector('.msg-title-text').innerText = "Carrier SMS";
+                        this.renderMessageThreadsList();
+                    }
+                } else if(appName === 'netspace') {
+                    this.renderSocialAppLayout();
+                } else if(appName === 'settings') {
+                    this.refreshSettingsDirectoryList();
+                }
+                this.checkExchangeButtonVisibility();
+            }
+
+            updateStatusBar() {
+                const tag = this.domElement.querySelector('.carrier-tag');
+                if(this.currentSim) {
+                    tag.innerText = `+1 (${this.currentSim})`;
+                    tag.style.color = "#00ff66";
+                } else {
+                    tag.innerText = "NO SOURCE SIGNAL LINK";
+                    tag.style.color = "inherit";
+                }
+            }
+
+            populateSimSelector() {
+                const select = this.domElement.querySelector('.sim-selector-node');
+                select.innerHTML = '<option value="NONE">[ UNLINKED GRID BUS ]</option>';
+                Object.keys(NetworkHub.sims).forEach(num => {
+                    const sim = NetworkHub.sims[num];
+                    if(!sim.allocatedTo || sim.allocatedTo === this.id) {
+                        const opt = document.createElement('option');
+                        opt.value = num;
+                        opt.innerText = `SIM: +1 (${num}) ${sim.allocatedTo === this.id ? '[Current]' : ''}`;
+                        select.appendChild(opt);
+                    }
+                });
+                if(this.currentSim) select.value = this.currentSim;
+            }
+
+            // --- DEEP CONTACT GRAPH HANDLING METHODS ---
+            registerLocalContactRecord(number, name, exchangedFlag = false) {
+                this.contacts[number] = { name: name, exchanged: exchangedFlag };
+            }
+
+            resolveContactLabel(number) {
+                if(this.contacts[number]) return this.contacts[number].name;
+                return `+1 (${number})`;
+            }
+
+            checkExchangeButtonVisibility() {
+                const area = this.domElement.querySelector('.phone-call-card-exchange');
+                if(!area) return;
+                
+                let activePeerNum = null;
+                if(this.activeApp === 'phone' && this.activeCallData) {
+                    // Pull target number actively from active trunk call mappings profiles records
+                    if(this.activeCallData.role === 'caller') activePeerNum = this.activeCallData.target;
+                    else if(this.activeCallData.role === 'receiver') activePeerNum = this.activeCallData.target;
+                } else if(this.activeApp === 'messages' && this.activeChatNum) {
+                    activePeerNum = this.activeChatNum;
+                }
+
+                if(activePeerNum) {
+                    const record = this.contacts[activePeerNum];
+                    if(!record || !record.exchanged) {
+                        area.style.display = 'block';
+                        return;
+                    }
+                }
+                area.style.display = 'none';
+            }
+
+            executeContactExchangeAction() {
+                let currentPeerNumber = null;
+                let peerPhoneInstanceId = null;
+
+                if(this.activeCallData) {
+                    currentPeerNumber = this.activeCallData.target;
+                    if(this.activeCallData.role === 'caller') {
+                        const targetSim = NetworkHub.sims[currentPeerNumber];
+                        if(targetSim) peerPhoneInstanceId = targetSim.allocatedTo;
+                    } else {
+                        peerPhoneInstanceId = this.activeCallData.peerPhoneId;
+                    }
+                } else if(this.activeChatNum) {
+                    currentPeerNumber = this.activeChatNum;
+                    const targetSim = NetworkHub.sims[currentPeerNumber];
+                    if(targetSim) peerPhoneInstanceId = targetSim.allocatedTo;
+                }
+
+                if(!this.currentSim) return alert("Requires an active SIM to broadcast card identity metadata.");
+                if(!peerPhoneInstanceId) return alert("Peer system connection array is inaccessible.");
+
+                const destinationDevice = Workspace.devices[peerPhoneInstanceId];
+                if(destinationDevice) {
+                    // Bidirectional distribution profile handshake logic routine
+                    let selfAssignedLabelToGive = prompt("Enter your name to broadcast to peer profile node directory:", `Node Node-${this.id} Identity`);
+                    if(!selfAssignedLabelToGive) return;
+
+                    // Write into local database structure array metrics maps
+                    this.registerLocalContactRecord(currentPeerNumber, destinationDevice.contacts[this.currentSim]?.name || `Contact +1 (${currentPeerNumber})`, true);
+                    
+                    // Route packet delay across vector space properties constraints parameters
+                    const metrics = NetworkHub.getDistanceMetrics(this.id, peerPhoneInstanceId);
+                    NetworkHub.log("Network", `Exchanging contact data structures packets across network pipeline... Delay: ${metrics.latency}ms`);
+                    
+                    setTimeout(() => {
+                        destinationDevice.registerLocalContactRecord(this.currentSim, selfAssignedLabelToGive, true);
+                        destinationDevice.checkExchangeButtonVisibility();
+                        destinationDevice.refreshSettingsDirectoryList();
+                        if(destinationDevice.activeApp === 'messages' && destinationDevice.activeChatNum === this.currentSim) {
+                            destinationDevice.openChatWorkspaceThread(this.currentSim);
+                        }
+                        alert("Contact properties distributed successfully.");
+                        this.checkExchangeButtonVisibility();
+                        this.refreshSettingsDirectoryList();
+                        if(this.activeApp === 'messages' && this.activeChatNum === currentPeerNumber) {
+                            this.openChatWorkspaceThread(currentPeerNumber);
+                        }
+                    }, metrics.latency);
+                }
+            }
+
+            // --- CELLULAR SWITCHBOARD INSTANTIATION OPERATIONS MECHANICS ---
+            triggerIncomingCall(fromNum, peerPhoneId) {
+                if(this.blockedNumbers.has(fromNum)) {
+                    NetworkHub.log("Switchboard", `Incoming packet dropped due to local firewall blacklist processing constraints.`);
+                    NetworkHub.terminateCall(peerPhoneId);
+                    return;
+                }
+                this.activeCallData = { role: 'receiver', target: fromNum, peerPhoneId: peerPhoneId };
+                const overlay = this.domElement.querySelector('.inc-call-overlay');
+                overlay.querySelector('.inc-caller-id').innerText = this.resolveContactLabel(fromNum);
+                overlay.classList.add('active');
+            }
+
+            establishCallConnection() {
+                const stateBox = this.domElement.querySelector('.active-call-state');
+                stateBox.querySelector('.call-status-label').innerText = "LIVE SECURE WAVEFORM CONNECTED";
+                this.startCallTimer();
+                this.checkExchangeButtonVisibility();
+            }
+
+            startCallTimer() {
+                let count = 0;
+                const lbl = this.domElement.querySelector('.call-timer');
+                lbl.innerText = "00:00";
+                clearInterval(this.callTimerInterval);
+                this.callTimerInterval = setInterval(() => {
+                    count++;
+                    let mins = Math.floor(count/60).toString().padStart(2,'0');
+                    let secs = (count%60).toString().padStart(2,'0');
+                    lbl.innerText = `${mins}:${secs}`;
+                }, 1000);
+            }
+
+            hangupCall(notifyNetwork = true) {
+                clearInterval(this.callTimerInterval);
+                if(notifyNetwork) NetworkHub.terminateCall(this.id);
+                
+                this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                const stateBox = this.domElement.querySelector('.active-call-state');
+                stateBox.style.display = 'none';
+                this.domElement.querySelector('.phone-call-trigger').style.display = 'block';
+                this.domElement.querySelector('.dialer-output').innerText = '';
+                this.activeCallData = null;
+                this.checkExchangeButtonVisibility();
+            }
+
+            // --- MESSAGING AND SMS PANE ACTIONS RULES MODULE ---
+            getLocalSMSStoreDatabase() {
+                if(!this.currentSim) return {};
+                if(!NetworkHub.sims[this.currentSim].messages) NetworkHub.sims[this.currentSim].messages = {};
+                return NetworkHub.sims[this.currentSim].messages;
+            }
+
+            saveLocalSMSMessage(sim, target, dir, text) {
+                if(!NetworkHub.sims[sim].messages) NetworkHub.sims[sim].messages = {};
+                const db = NetworkHub.sims[sim].messages;
+                if(!db[target]) db[target] = [];
+                db[target].push({ direction: dir, text: text });
+            }
+
+            receiveSMS(fromNum, text) {
+                if(this.blockedNumbers.has(fromNum)) return;
+                if(!this.currentSim) return;
+                this.saveLocalSMSMessage(this.currentSim, fromNum, 'rcvd', text);
+                
+                if(this.activeApp === 'messages') {
+                    this.renderMessageThreadsList();
+                    if(this.activeChatNum === fromNum) this.openChatWorkspaceThread(fromNum);
+                }
+            }
+
+            renderMessageThreadsList() {
+                const list = this.domElement.querySelector('.msg-threads-list-anchor');
+                list.innerHTML = '';
+                if(!this.currentSim) {
+                    list.innerHTML = '<div style="color:#444; font-size:10px; text-align:center; padding:30px;">NO CARRIER PROFILE ACTIVE</div>';
+                    return;
+                }
+                const db = this.getLocalSMSStoreDatabase();
+                const threads = Object.keys(db);
+                if(threads.length === 0) {
+                    list.innerHTML = '<div style="color:#444; font-size:10px; text-align:center; padding:30px;">Database Pipeline Empty</div>';
+                    return;
+                }
+
+                threads.forEach(num => {
+                    const r = document.createElement('div');
+                    r.className = 'thread-row';
+                    const pack = db[num][db[num].length - 1];
+                    r.innerHTML = `
+                        <div class="meta-line"><span>${this.resolveContactLabel(num)}</span></div>
+                        <div class="preview-line">${pack.text}</div>
+                    `;
+                    r.addEventListener('click', () => this.openChatWorkspaceThread(num));
+                    list.appendChild(r);
+                });
+            }
+
+            openChatWorkspaceThread(targetNumber) {
+                this.activeChatNum = targetNumber;
+                
+                const container = this.domElement.querySelector('.msg-layout-container');
+                const backNode = this.domElement.querySelector('.msg-back-node');
+                const hamburger = this.domElement.querySelector('.hamburger-menu-trigger');
+
+                container.classList.add('in-chat');
+                backNode.style.visibility = 'visible';
+                hamburger.style.display = 'block';
+
+                this.domElement.querySelector('.msg-title-text').innerText = this.resolveContactLabel(targetNumber);
+
+                const stream = this.domElement.querySelector('.chat-stream');
+                stream.innerHTML = '';
+                
+                const db = this.getLocalSMSStoreDatabase();
+                const history = db[targetNumber] || [];
+
+                history.forEach(m => {
+                    const b = document.createElement('div');
+                    b.className = `chat-bubble ${m.direction}`;
+                    b.innerText = m.text;
+                    stream.appendChild(b);
+                });
+                stream.scrollTop = stream.scrollHeight;
+                this.checkExchangeButtonVisibility();
+            }
+
+            // --- NETSPACE IMMERSIVE VIDEO MEDIA APP ENGINE LAYOUT MODULE ---
+            renderSocialAppLayout() {
+                const auth = this.domElement.querySelector('.soc-auth-screen');
+                const main = this.domElement.querySelector('.soc-main-screen');
+                const bar = this.domElement.querySelector('.soc-acc-bar');
+                bar.innerHTML = '';
+
+                this.socialAccountsCache.forEach(acc => {
+                    const t = document.createElement('div');
+                    t.className = `mini-avatar ${this.activeSocialUser === acc ? 'active' : ''}`;
+                    t.innerText = acc;
+                    t.addEventListener('click', () => { this.activeSocialUser = acc; this.renderSocialAppLayout(); });
+                    bar.appendChild(t);
+                });
+
+                if(this.socialAccountsCache.length < 5) {
+                    const add = document.createElement('div');
+                    add.className = 'mini-avatar'; add.innerText = '[+ Link Account]';
+                    add.addEventListener('click', () => { this.activeSocialUser = null; this.renderSocialAppLayout(); });
+                    bar.appendChild(add);
+                }
+
+                if(!this.activeSocialUser) {
+                    main.style.display = 'none'; auth.style.display = 'flex';
+                } else {
+                    auth.style.display = 'none'; main.style.display = 'flex';
+                    this.refreshSocialFeed();
+                }
+            }
+
+            refreshSocialFeed() {
+                const feed = this.domElement.querySelector('.ns-feed');
+                if(!feed) return;
+                feed.innerHTML = '';
+
+                if(NetworkHub.socialPosts.length === 0) {
+                    feed.innerHTML = '<div style="color:#555; font-size:11px; text-align:center; padding:40px;">No streams shared on topology channel loops.</div>';
+                    return;
+                }
+
+                NetworkHub.socialPosts.forEach(post => {
+                    const card = document.createElement('div');
+                    card.className = 'ns-card';
+                    card.style.backgroundImage = post.bg;
+                    card.innerHTML = `
+                        <div class="ns-overlay-details">
+                            <div class="ns-user-tag">${post.sender}</div>
+                            <div class="ns-desc-text">${post.desc}</div>
+                        </div>
+                        <div class="ns-action-sidebar">
+                            <div class="ns-action-icon">❤️</div><span class="ns-action-lbl">1.2k</span>
+                            <div class="ns-action-icon">💬</div><span class="ns-action-lbl">42</span>
+                            <div class="ns-action-icon">⚡</div><span class="ns-action-lbl">Share</span>
+                        </div>
+                    `;
+                    feed.appendChild(card);
+                });
+            }
+
+            refreshSettingsDirectoryList() {
+                const anchor = this.domElement.querySelector('.settings-contacts-list');
+                anchor.innerHTML = '';
+                const entries = Object.keys(this.contacts);
+                if(entries.length === 0) {
+                    anchor.innerHTML = '<div style="color:#444; padding:5px;">Phonebook Directory Record Trace Empty</div>';
+                    return;
+                }
+                entries.forEach(e => {
+                    const record = this.contacts[e];
+                    const item = document.createElement('div');
+                    item.style.padding = '3px 0';
+                    item.style.borderBottom = '1px solid #111';
+                    item.innerText = `[${record.exchanged ? 'EXCH' : 'LOCAL'}] ${record.name} -> +1 (${e})`;
+                    anchor.appendChild(item);
+                });
+            }
+        }
+
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+        };
+    </script>
+</body>
+</html>
