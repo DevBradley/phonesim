@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Device Workspace Simulation</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #121212;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #e0e0e0;
+            --text-muted: #777777;
+            --accent: #555555;
+            --accent-active: #aaaaaa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-main);
+            overflow: hidden;
+            height: 100vh;
+            width: 100vw;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Diagnostics Control Panel */
+        #control-panel {
+            height: 180px;
+            background-color: var(--bg-secondary);
+            border-bottom: 2px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            z-index: 10;
+            flex-shrink: 0;
+        }
+
+        .panel-header {
+            font-weight: bold;
+            font-size: 1.2rem;
+            margin-bottom: 10px;
+            letter-spacing: 2px;
+            color: #ffffff;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .control-group label {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        select, input, button {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 6px 12px;
+            font-family: inherit;
+            font-size: 0.85rem;
+            outline: none;
+            border-radius: 4px;
+        }
+
+        button {
+            cursor: pointer;
+            transition: all 0.2s ease;
+            background: #222;
+        }
+
+        button:hover {
+            background: var(--accent);
+            border-color: var(--accent-active);
+        }
+
+        /* Workspace Grid */
+        #workspace {
+            flex-grow: 1;
+            display: flex;
+            gap: 30px;
+            padding: 30px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            background-image: radial-gradient(var(--border-color) 1px, transparent 1px);
+            background-size: 20px 20px;
+            align-items: center;
+        }
+
+        /* Device Frame Styling */
+        .device-container {
+            position: relative;
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .device-label {
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+            background: var(--bg-secondary);
+            padding: 4px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .phone-shell {
+            width: 320px;
+            height: 640px;
+            border-radius: 44px;
+            position: relative;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+            padding: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .phone-shell::after {
+            content: '';
+            position: absolute;
+            inset: 4px;
+            border-radius: 40px;
+            pointer-events: none;
+        }
+
+        /* Model 12 Flat Edge styling */
+        .model-12 {
+            box-shadow: 0 0 0 4px #444, 0 25px 50px -12px rgba(0,0,0,0.7);
+        }
+
+        /* Model 13 Sleek Edge styling */
+        .model-13 {
+            box-shadow: 0 0 0 5px #555, 0 25px 50px -12px rgba(0,0,0,0.7);
+        }
+
+        .phone-screen {
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            border-radius: 34px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            background-size: cover;
+            background-position: center;
+        }
+
+        /* Dynamic SVG Notch overlays */
+        .notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        /* Status bar */
+        .status-bar {
+            height: 35px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 24px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            z-index: 90;
+            color: #fff;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+        }
+
+        /* Phone Screen Views */
+        .screen-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .home-screen {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-gap: 18px;
+            padding: 25px 20px;
+            align-content: start;
+            height: 100%;
+        }
+
+        .app-icon-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
+
+        .app-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            position: relative;
+        }
+
+        .app-version-badge {
+            position: absolute;
+            bottom: -3px;
+            right: -5px;
+            background: #e11d48;
+            color: white;
+            font-size: 0.55rem;
+            padding: 1px 4px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-family: sans-serif;
+            border: 1px solid #000;
+        }
+
+        .app-label {
+            font-size: 0.65rem;
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+            font-weight: 500;
+            max-width: 65px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Core UI App Sub-structure */
+        .app-window {
+            position: absolute;
+            inset: 0;
+            background: #111;
+            display: flex;
+            flex-direction: column;
+            z-index: 50;
+        }
+
+        .app-header {
+            height: 45px;
+            background: #1c1c1e;
+            border-bottom: 1px solid #2c2c2e;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            justify-content: space-between;
+        }
+
+        .app-title {
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .app-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Browser App V1 Styles */
+        .browser-url-bar {
+            padding: 6px;
+            background: #2c2c2e;
+            display: flex;
+            gap: 5px;
+        }
+
+        .browser-view {
+            padding: 15px;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+
+        /* Settings App V1 Styles */
+        .settings-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #2c2c2e;
+            font-size: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .wallpaper-thumbs {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 10px 15px;
+        }
+
+        .wp-thumb {
+            height: 60px;
+            border: 2px solid transparent;
+            border-radius: 6px;
+            cursor: pointer;
+            background-size: cover;
+        }
+
+        .wp-thumb.active {
+            border-color: #007aff;
+        }
+
+        /* Phone & Contacts App V2 Styles */
+        .tabs-header {
+            display: flex;
+            background: #1c1c1e;
+            border-bottom: 1px solid #2c2c2e;
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 10px;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-align: center;
+            border-radius: 0;
+        }
+
+        .tab-btn.active {
+            color: #fff;
+            border-bottom: 2px solid #007aff;
+        }
+
+        .contact-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 15px;
+            border-bottom: 1px solid #2c2c2e;
+            cursor: pointer;
+        }
+
+        .contact-row:hover {
+            background: #1c1c1e;
+        }
+
+        .monogram-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #444;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .contact-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .contact-name {
+            font-size: 0.85rem;
+            font-weight: bold;
+        }
+
+        .contact-num {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        /* Call Overlay */
+        .call-screen {
+            position: absolute;
+            inset: 0;
+            background: rgba(10,10,10,0.95);
+            z-index: 120;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-around;
+            padding: 60px 20px;
+        }
+
+        /* Social Media App V2 Styles */
+        .soc-tabs {
+            display: flex;
+            background: #161618;
+            border-bottom: 1px solid #2c2c2e;
+        }
+
+        .soc-tab {
+            flex: 1;
+            padding: 8px;
+            text-align: center;
+            font-size: 0.75rem;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        .soc-tab.active {
+            color: #fff;
+            font-weight: bold;
+            border-bottom: 2px solid #a855f7;
+        }
+
+        .soc-timeline, .soc-shorts, .soc-messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .soc-post {
+            padding: 12px;
+            border-bottom: 1px solid #222;
+            font-size: 0.8rem;
+        }
+
+        .soc-handle {
+            color: #a855f7;
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        /* Scrollable Shorts Container */
+        .shorts-viewer {
+            flex-grow: 1;
+            scroll-snap-type: y mandatory;
+            overflow-y: scroll;
+            height: 100%;
+        }
+
+        .short-card {
+            height: 100%;
+            min-height: 420px;
+            scroll-snap-align: start;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 20px;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .short-overlay {
+            background: linear-gradient(transparent, rgba(0,0,0,0.9));
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .short-content {
+            position: relative;
+            z-index: 2;
+            text-shadow: 0 1px 4px rgba(0,0,0,1);
+        }
+
+        /* Social DMs */
+        .dm-chat-list-item {
+            padding: 12px 15px;
+            border-bottom: 1px solid #222;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .dm-window {
+            position: absolute;
+            inset: 45px 0 0 0;
+            background: #111;
+            display: flex;
+            flex-direction: column;
+            z-index: 60;
+        }
+
+        .chat-messages-box {
+            flex-grow: 1;
+            padding: 10px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chat-bubble {
+            max-width: 75%;
+            padding: 8px 12px;
+            border-radius: 14px;
+            font-size: 0.75rem;
+            line-height: 1.3;
+            word-break: break-word;
+        }
+
+        .chat-bubble.sent {
+            background: #a855f7;
+            color: #fff;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+
+        .chat-bubble.rcvd {
+            background: #2c2c2e;
+            color: #fff;
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+        }
+
+        /* Generic Chat input footer */
+        .chat-input-area {
+            padding: 8px;
+            background: #1c1c1e;
+            border-top: 1px solid #2c2c2e;
+            display: flex;
+            gap: 6px;
+        }
+
+        /* System Navigation pill */
+        .home-indicator {
+            width: 120px;
+            height: 5px;
+            background-color: rgba(255,255,255,0.5);
+            border-radius: 10px;
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            cursor: pointer;
+        }
+
+        /* Utility classes */
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+    <div id="#control-panel" id="control-panel">
+        <div class="panel-header">
+            <span>NETWORK CONTROLLER & WORKSPACE</span>
+            <span style="font-size:0.75rem; color: var(--text-muted);">ACTIVE NODES: <span id="node-count">0</span></span>
+        </div>
+        <div class="controls-row">
+            <div class="control-group">
+                <label>Device Model Chassis</label>
+                <select id="device-model-select">
+                    <option value="model-12">Model 12 (Flat Bezel)</option>
+                    <option value="model-13" selected>Model 13 (Narrow Notch)</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Chassis Finish Color</label>
+                <select id="device-color-select"></select>
+            </div>
+            <div class="control-group">
+                <label>Assign Handle</label>
+                <input type="text" id="device-handle-input" placeholder="@user">
+            </div>
+            <div class="control-group" style="margin-top: 15px;">
+                <button id="add-device-btn">+ Provision Device Node</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="workspace"></div>
+
+    <script>
+        // Global Network Layer Configuration Data
+        const NetworkHub = {
+            devices: [],
+            socialPosts: [
+                { id: 1, sender: '@alpha', content: 'Deploying simulation nodes onto the workspace architecture grid.' },
+                { id: 2, sender: '@beta', content: 'Testing real-time synchronized communication infrastructure pipeline!' }
+            ],
+            socialShorts: [
+                { id: 1, title: 'Abstract Geometry Loop', tag: '#math', bg: 'linear-gradient(45deg, #1f1c2c, #928dab)' },
+                { id: 2, title: 'Cyber Matrix Simulation Grid', tag: '#scifi', bg: 'linear-gradient(135deg, #0f2027, #203a43, #2c5364)' },
+                { id: 3, title: 'Neon Vector Render Wavefront', tag: '#render', bg: 'linear-gradient(90deg, #4da0b0, #d39d38)' }
+            ],
+            socialDMs: [], // Schema: { from, to, content, timestamp }
+            
+            init() {
+                // Seed some data fields
+                this.generateModelColors();
+            },
+
+            generateModelColors() {
+                const modelSelect = document.getElementById('device-model-select');
+                const colorSelect = document.getElementById('device-color-select');
+                
+                const colors = {
+                    'model-12': [
+                        { name: 'Dark Blue', hex: '#273e52' },
+                        { name: 'Mint Green', hex: '#daebd4' },
+                        { name: 'Product RED', hex: '#ba1a21' },
+                        { name: 'White finish', hex: '#f5f5f7' },
+                        { name: 'Black stealth', hex: '#1c1c1e' }
+                    ],
+                    'model-13': [
+                        { name: 'Soft Pink', hex: '#fae0e4' },
+                        { name: 'Sierra Blue', hex: '#41748d' },
+                        { name: 'Midnight', hex: '#24292e' },
+                        { name: 'Starlight', hex: '#f1ece4' },
+                        { name: 'Product RED V2', hex: '#c8102e' }
+                    ]
+                };
+
+                const populateColors = () => {
+                    colorSelect.innerHTML = '';
+                    colors[modelSelect.value].forEach(c => {
+                        const opt = document.createElement('option');
+                        opt.value = c.hex;
+                        opt.textContent = c.name;
+                        colorSelect.appendChild(opt);
+                    });
+                };
+
+                modelSelect.addEventListener('change', populateColors);
+                populateColors();
+            },
+
+            registerDevice(device) {
+                this.devices.push(device);
+                document.getElementById('node-count').textContent = this.devices.length;
+                this.broadcastSystemUpdate();
+            },
+
+            removeDevice(id) {
+                this.devices = this.devices.filter(d => d.id !== id);
+                document.getElementById('node-count').textContent = this.devices.length;
+            },
+
+            broadcastSystemUpdate() {
+                this.devices.forEach(d => {
+                    d.refreshSocialFeed();
+                    d.refreshDMView();
+                });
+            },
+
+            submitPost(sender, content) {
+                this.socialPosts.unshift({ id: Date.now(), sender, content });
+                this.broadcastSystemUpdate();
+            },
+
+            sendDirectMessage(from, to, content) {
+                this.socialDMs.push({ from, to, content, timestamp: Date.now() });
+                this.broadcastSystemUpdate();
+            },
+
+            routeCall(fromNum, toNum, action) {
+                const target = this.devices.find(d => d.phoneNumber === toNum);
+                const source = this.devices.find(d => d.phoneNumber === fromNum);
+                if (target && source) {
+                    if (action === 'dial') {
+                        target.receiveIncomingCall(source.phoneNumber, source.getContactName(source.phoneNumber));
+                    } else if (action === 'hangup') {
+                        target.endActiveCall();
+                    }
+                }
+            }
+        };
+
+        // Standardized inline custom structural SVG wallpapers
+        const SVGWallpapers = [
+            `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="570" viewBox="0 0 320 570"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23111827"/><stop offset="100%" stop-color="%23311042"/></linearGradient></defs><rect width="100%" height="100%" fill="url(%23g1)"/><path d="M-40,300 Q60,150 160,320 T360,280 L360,570 L-40,570 Z" fill="%234c1d95" opacity="0.4"/><path d="M-20,400 Q80,250 200,420 T380,320 L380,570 L-20,570 Z" fill="%23701a75" opacity="0.3"/></svg>`,
+            `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="570" viewBox="0 0 320 570"><rect width="100%" height="100%" fill="%230f172a"/><g stroke="%231e293b" stroke-width="1"><line x1="0" y1="50" x2="320" y2="50"/><line x1="0" y1="100" x2="320" y2="100"/><line x1="0" y1="150" x2="320" y2="150"/><line x1="0" y1="200" x2="320" y2="200"/><line x1="0" y1="250" x2="320" y2="250"/><line x1="0" y1="300" x2="320" y2="300"/><line x1="0" y1="350" x2="320" y2="350"/><line x1="0" y1="400" x2="320" y2="400"/><line x1="0" y1="450" x2="320" y2="450"/><line x1="0" y1="500" x2="320" y2="500"/><line x1="0" y1="550" x2="320" y2="550"/><line x1="50" y1="0" x2="50" y2="570"/><line x1="100" y1="0" x2="100" y2="570"/><line x1="150" y1="0" x2="150" y2="570"/><line x1="200" y1="0" x2="200" y2="570"/><line x1="250" y1="0" x2="250" y2="570"/><line x1="300" y1="0" x2="300" y2="570"/></g><circle cx="160" cy="285" r="90" fill="none" stroke="%2338bdf8" stroke-width="2" opacity="0.4"/></svg>`,
+            `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="320" height="570" viewBox="0 0 320 570"><defs><radialGradient id="r1" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="%23dc2626"/><stop offset="100%" stop-color="%23170101"/></radialGradient></defs><rect width="100%" height="100%" fill="url(%23r1)"/><circle cx="80" cy="120" r="140" fill="%23f43f5e" opacity="0.15"/><circle cx="250" cy="450" r="180" fill="%23991b1b" opacity="0.2"/></svg>`
+        ];
+
+        // Device Instance Node Controller Blueprint
+        class SimulatedDevice {
+            constructor(id, model, color, handle) {
+                this.id = id;
+                this.model = model; // 'model-12' or 'model-13'
+                this.color = color; // Hex string representation
+                this.socialHandle = handle || `@node_${this.id.toString().slice(-3)}`;
+                this.phoneNumber = `555-${Math.floor(100 + Math.random() * 900)}-${Math.floor(1000 + Math.random() * 9000)}`;
+                this.currentWallpaperIndex = 0;
+                
+                // Device Specific Dynamic Local Data Storage
+                this.contacts = [
+                    { name: 'Central Core Network', number: '555-0100-9999', monogram: 'CC' }
+                ];
+                
+                this.activeApp = null; // null represents Default Launcher Home Screen
+                this.domElement = null;
+                this.currentSocTab = 'feed';
+                this.activeDMTarget = null;
+                this.incomingCallData = null;
+            }
+
+            renderStructure() {
+                const container = document.createElement('div');
+                container.className = 'device-container';
+                container.id = `device-node-${this.id}`;
+
+                // Header labels showing node diagnostic identity parameters
+                const diagnosticLabel = document.createElement('div');
+                diagnosticLabel.className = 'device-label';
+                diagnosticLabel.innerHTML = `<strong>${this.socialHandle}</strong><br><span style="font-size:0.65rem;color:var(--text-muted);">${this.phoneNumber}</span>`;
+                container.appendChild(diagnosticLabel);
+
+                // Phone structural overlay rendering
+                const shell = document.createElement('div');
+                shell.className = `phone-shell ${this.model}`;
+                shell.style.backgroundColor = this.color;
+
+                // Unique SVG Hardware Notch layouts for Model 12 / 13 profiles
+                const notchSVG = this.model === 'model-12' 
+                    ? `<svg class="notch" width="160" height="30" viewBox="0 0 160 30" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0H160V18C160 23.5228 155.523 28 150 28H10C4.47715 28 0 23.5228 0 18V0Z" fill="black"/><circle cx="120" cy="12" r="3.5" fill="%23111"/><rect x="50" y="8" width="50" height="4" rx="2" fill="%23222"/></svg>`
+                    : `<svg class="notch" width="120" height="32" viewBox="0 0 120 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M0 0H120V20C120 26.6274 114.627 32 108 32H12C5.37258 32 0 26.6274 0 20V0Z" fill="black"/><circle cx="95" cy="14" r="3" fill="%23111"/><rect x="35" y="8" width="40" height="4" rx="2" fill="%23222"/></svg>`;
+
+                shell.innerHTML = notchSVG;
+
+                // Screen Component Inner Layout
+                const screen = document.createElement('div');
+                screen.className = 'phone-screen';
+                screen.style.backgroundImage = `url('${SVGWallpapers[this.currentWallpaperIndex]}')`;
+
+                // System Status bar elements configuration
+                const statusBar = document.createElement('div');
+                statusBar.className = 'status-bar';
+                statusBar.innerHTML = `<div>08:51</div><div style="display:flex;gap:4px;"><span>📶</span><span>🔋</span></div>`;
+                screen.appendChild(statusBar);
+
+                // Screen Window view interface core viewport
+                const screenContent = document.createElement('div');
+                screenContent.className = 'screen-content';
+                screen.appendChild(screenContent);
+
+                // Screen Navigation home bar indicator component
+                const navBarIndicator = document.createElement('div');
+                navBarIndicator.className = 'home-indicator';
+                navBarIndicator.addEventListener('click', () => this.minimizeToHome());
+                screen.appendChild(navBarIndicator);
+
+                shell.appendChild(screen);
+                container.appendChild(shell);
+
+                this.domElement = container;
+                this.loadHomeScreen();
+
+                return container;
+            }
+
+            loadHomeScreen() {
+                this.activeApp = null;
+                const viewPort = this.domElement.querySelector('.screen-content');
+                viewPort.innerHTML = '';
+
+                const grid = document.createElement('div');
+                grid.className = 'home-screen';
+
+                // App List Array with precise structural properties
+                const applications = [
+                    { name: 'Phone & Contacts', icon: '📞', version: 'V2', action: () => this.launchApp('phone') },
+                    { name: 'Social Space', icon: '🔮', version: 'V2', action: () => this.launchApp('social') },
+                    { name: 'Browser Suite', icon: '🌐', version: 'V1', action: () => this.launchApp('browser') },
+                    { name: 'Settings Center', icon: '⚙️', version: 'V1', action: () => this.launchApp('settings') }
+                ];
+
+                applications.forEach(app => {
+                    const iconWrapper = document.createElement('div');
+                    iconWrapper.className = 'app-icon-wrapper';
+                    iconWrapper.onclick = app.action;
+
+                    iconWrapper.innerHTML = `
+                        <div class="app-icon" style="background:#222; border: 1px solid var(--border-color);">
+                            ${app.icon}
+                            <span class="app-version-badge">${app.version}</span>
+                        </div>
+                        <div class="app-label">${app.name}</div>
+                    `;
+                    grid.appendChild(iconWrapper);
+                });
+
+                viewPort.appendChild(grid);
+            }
+
+            launchApp(appType) {
+                this.activeApp = appType;
+                const viewPort = this.domElement.querySelector('.screen-content');
+                viewPort.innerHTML = '';
+
+                const windowEl = document.createElement('div');
+                windowEl.className = 'app-window';
+
+                let headerTitle = '';
+                let bodyContent = document.createElement('div');
+                bodyContent.className = 'app-body';
+
+                if (appType === 'browser') {
+                    headerTitle = 'Browser Suite V1';
+                    bodyContent.innerHTML = `
+                        <div class="browser-url-bar">
+                            <input type="text" value="https://simulation.network.local" style="flex-grow:1; font-size:0.65rem;" readonly>
+                        </div>
+                        <div class="browser-view">
+                            <h3>Hypertext Matrix Engine</h3>
+                            <p style="margin-top:10px; color:var(--text-muted);">Secure sandbox execution environment node successful. Diagnostics active.</p>
+                        </div>
+                    `;
+                } else if (appType === 'settings') {
+                    headerTitle = 'Settings V1';
+                    bodyContent.innerHTML = `
+                        <div class="settings-item"><span>Model Definition</span><span style="color:var(--text-muted);">${this.model === 'model-12' ? 'Model 12' : 'Model 13'}</span></div>
+                        <div class="settings-item"><span>Chassis Color HEX</span><span style="color:var(--text-muted);">${this.color}</span></div>
+                        <div style="padding:12px 15px 4px 15px; font-size:0.75rem; color:var(--text-muted);">Engine Desktop Wallpaper SVGs</div>
+                        <div class="wallpaper-thumbs"></div>
+                    `;
+                    
+                    const thumbsContainer = bodyContent.querySelector('.wallpaper-thumbs');
+                    SVGWallpapers.forEach((wp, idx) => {
+                        const thumb = document.createElement('div');
+                        thumb.className = `wp-thumb ${this.currentWallpaperIndex === idx ? 'active' : ''}`;
+                        thumb.style.backgroundImage = `url('${wp}')`;
+                        thumb.onclick = () => {
+                            this.currentWallpaperIndex = idx;
+                            this.domElement.querySelector('.phone-screen').style.backgroundImage = `url('${wp}')`;
+                            this.launchApp('settings');
+                        };
+                        thumbsContainer.appendChild(thumb);
+                    });
+                } else if (appType === 'phone') {
+                    headerTitle = 'Phone & Contacts V2';
+                    this.renderPhoneApp(windowEl, bodyContent);
+                } else if (appType === 'social') {
+                    headerTitle = 'Social Space V2';
+                    this.renderSocialApp(windowEl, bodyContent);
+                }
+
+                windowEl.innerHTML = `
+                    <div class="app-header">
+                        <span class="app-title">${headerTitle}</span>
+                        <span style="font-size:0.7rem; cursor:pointer; color:var(--text-muted);" class="close-app-trigger">✕</span>
+                    </div>
+                `;
+                windowEl.querySelector('.close-app-trigger').onclick = () => this.minimizeToHome();
+                windowEl.appendChild(bodyContent);
+                viewPort.appendChild(windowEl);
+            }
+
+            minimizeToHome() {
+                this.loadHomeScreen();
+            }
+
+            // ==========================================
+            // PHONE & CONTACTS V2 SYSTEM COMPONENT
+            // ==========================================
+            renderPhoneApp(windowEl, bodyContent) {
+                const tabsHeader = document.createElement('div');
+                tabsHeader.className = 'tabs-header';
+                tabsHeader.innerHTML = `
+                    <button class="tab-btn active" id="tab-contacts-trigger">Contacts Node</button>
+                    <button class="tab-btn" id="tab-dialer-trigger">Terminal Keypad</button>
+                `;
+                windowEl.appendChild(tabsHeader);
+
+                const listContainer = document.createElement('div');
+                listContainer.style.flexGrow = '1';
+                listContainer.style.overflowY = 'auto';
+                bodyContent.appendChild(listContainer);
+
+                const renderContactsList = () => {
+                    listContainer.innerHTML = `
+                        <div style="padding:10px; display:flex; gap:5px;">
+                            <button id="add-contact-action-btn" style="width:100%;font-size:0.75rem;padding:6px;">+ Add New Target Contact</button>
+                        </div>
+                    `;
+                    
+                    this.contacts.forEach(contact => {
+                        const row = document.createElement('div');
+                        row.className = 'contact-row';
+                        row.innerHTML = `
+                            <div class="monogram-avatar">${contact.monogram}</div>
+                            <div class="contact-info">
+                                <span class="contact-name">${contact.name}</span>
+                                <span class="contact-num">${contact.number}</span>
+                            </div>
+                        `;
+                        row.onclick = () => this.openContactOptions(contact);
+                        listContainer.appendChild(row);
+                    });
+
+                    listContainer.querySelector('#add-contact-action-btn').onclick = () => {
+                        const name = prompt("Enter Contact Name:");
+                        const number = prompt("Enter Contact Phone Number:");
+                        if (name && number) {
+                            const monogram = name.split(' ').map(n => n[0]).join('').slice(0,2).toUpperCase() || '??';
+                            this.contacts.push({ name, number, monogram });
+                            renderContactsList();
+                        }
+                    };
+                };
+
+                const renderDialerLayout = () => {
+                    listContainer.innerHTML = `
+                        <div style="padding:20px; display:flex; flex-direction:column; gap:15px; align-items:center;">
+                            <input type="text" id="dialer-input-field" placeholder="Target Number" style="width:100%; text-align:center; font-size:1.2rem;">
+                            <button id="dialer-call-action" style="width:100%; background:#10b981; border:none; padding:10px; font-weight:bold;">INITIATE VOICE CONNECTION</button>
+                        </div>
+                    `;
+                    listContainer.querySelector('#dialer-call-action').onclick = () => {
+                        const num = listContainer.querySelector('#dialer-input-field').value;
+                        if(num) this.initiateCallSequence(num);
+                    };
+                };
+
+                windowEl.querySelector('#tab-contacts-trigger').onclick = (e) => {
+                    windowEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    renderContactsList();
+                };
+
+                windowEl.querySelector('#tab-dialer-trigger').onclick = (e) => {
+                    windowEl.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                    e.target.classList.add('active');
+                    renderDialerLayout();
+                };
+
+                // Default view load
+                renderContactsList();
+            }
+
+            openContactOptions(contact) {
+                const action = confirm(`Contact: ${contact.name}\nChoose action:\n[OK] to Call\n[Cancel] to abort operation`);
+                if (action) {
+                    this.initiateCallSequence(contact.number);
+                }
+            }
+
+            getContactName(number) {
+                const found = this.contacts.find(c => c.number === number);
+                return found ? found.name : number;
+            }
+
+            initiateCallSequence(number) {
+                const callScreen = document.createElement('div');
+                callScreen.className = 'call-screen';
+                callScreen.innerHTML = `
+                    <div style="text-align:center;">
+                        <div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:10px;">OUTBOUND SIGNAL...</div>
+                        <h2>${this.getContactName(number)}</h2>
+                        <div style="font-size:0.75rem; margin-top:5px; color:var(--text-muted);">${number}</div>
+                    </div>
+                    <button id="hangup-trigger-btn" style="background:#ef4444; border:none; padding:12px 30px; border-radius:30px; font-weight:bold; color:white;">DISCONNECT</button>
+                `;
+                this.domElement.querySelector('.screen-content').appendChild(callScreen);
+                NetworkHub.routeCall(this.phoneNumber, number, 'dial');
+
+                callScreen.querySelector('#hangup-trigger-btn').onclick = () => {
+                    NetworkHub.routeCall(this.phoneNumber, number, 'hangup');
+                    callScreen.remove();
+                };
+            }
+
+            receiveIncomingCall(fromNumber, senderIdentity) {
+                this.incomingCallData = { fromNumber };
+                const callScreen = document.createElement('div');
+                callScreen.className = 'call-screen';
+                callScreen.id = 'active-incoming-call-view';
+                callScreen.innerHTML = `
+                    <div style="text-align:center;">
+                        <div style="font-size:0.8rem; color:#10b981; margin-bottom:10px; animation: pulse 1s infinite;">INCOMING VOICE LINK...</div>
+                        <h2>${this.getContactName(fromNumber)}</h2>
+                        <div style="font-size:0.75rem; margin-top:5px; color:var(--text-muted);">${fromNumber}</div>
+                    </div>
+                    <div style="display:flex; gap:20px;">
+                        <button id="accept-call-trigger" style="background:#10b981; border:none; padding:12px 24px; border-radius:30px; font-weight:bold; color:white;">ACCEPT</button>
+                        <button id="reject-call-trigger" style="background:#ef4444; border:none; padding:12px 24px; border-radius:30px; font-weight:bold; color:white;">REJECT</button>
+                    </div>
+                `;
+                this.domElement.querySelector('.screen-content').appendChild(callScreen);
+
+                callScreen.querySelector('#accept-call-trigger').onclick = () => {
+                    callScreen.innerHTML = `
+                        <div style="text-align:center;">
+                            <div style="font-size:0.8rem; color:#10b981; margin-bottom:10px;">ACTIVE CONNECTION LAYER</div>
+                            <h2>${this.getContactName(fromNumber)}</h2>
+                        </div>
+                        <button id="hangup-incoming-trigger" style="background:#ef4444; border:none; padding:12px 30px; border-radius:30px; font-weight:bold; color:white;">DISCONNECT</button>
+                    `;
+                    callScreen.querySelector('#hangup-incoming-trigger').onclick = () => {
+                        NetworkHub.routeCall(this.phoneNumber, fromNumber, 'hangup');
+                        callScreen.remove();
+                    };
+                };
+
+                callScreen.querySelector('#reject-call-trigger').onclick = () => {
+                    NetworkHub.routeCall(this.phoneNumber, fromNumber, 'hangup');
+                    callScreen.remove();
+                };
+            }
+
+            endActiveCall() {
+                const el = this.domElement.querySelector('#active-incoming-call-view');
+                if (el) el.remove();
+            }
+
+            // ==========================================
+            // SOCIAL SPACE V2 SYSTEM COMPONENT 
+            // ==========================================
+            renderSocialApp(windowEl, bodyContent) {
+                const socTabs = document.createElement('div');
+                socTabs.className = 'soc-tabs';
+                socTabs.innerHTML = `
+                    <div class="soc-tab ${this.currentSocTab === 'feed' ? 'active' : ''}" data-tab="feed">Global Timeline</div>
+                    <div class="soc-tab ${this.currentSocTab === 'shorts' ? 'active' : ''}" data-tab="shorts">Shorts Feed</div>
+                    <div class="soc-tab ${this.currentSocTab === 'dms' ? 'active' : ''}" data-tab="dms">Direct Chat</div>
+                `;
+                windowEl.appendChild(socTabs);
+
+                // View Containers instantiation
+                const feedView = document.createElement('div');
+                feedView.className = 'soc-timeline';
+                
+                const shortsView = document.createElement('div');
+                shortsView.className = 'soc-shorts hidden';
+
+                const dmsView = document.createElement('div');
+                dmsView.className = 'soc-messages hidden';
+
+                bodyContent.appendChild(feedView);
+                bodyContent.appendChild(shortsView);
+                bodyContent.appendChild(dmsView);
+
+                // Wire up tab switching mechanics
+                socTabs.querySelectorAll('.soc-tab').forEach(tab => {
+                    tab.onclick = (e) => {
+                        socTabs.querySelectorAll('.soc-tab').forEach(t => t.classList.remove('active'));
+                        e.target.classList.add('active');
+                        this.currentSocTab = e.target.dataset.tab;
+
+                        feedView.classList.add('hidden');
+                        shortsView.classList.add('hidden');
+                        dmsView.classList.add('hidden');
+
+                        if (this.currentSocTab === 'feed') feedView.classList.remove('hidden');
+                        if (this.currentSocTab === 'shorts') shortsView.classList.remove('hidden');
+                        if (this.currentSocTab === 'dms') dmsView.classList.remove('hidden');
+                    };
+                });
+
+                // Render Timeline core logic
+                feedView.innerHTML = `
+                    <div style="padding:10px; display:flex; gap:6px; background:#161618; border-bottom:1px solid #222;">
+                        <input type="text" placeholder="Broadcast thought node..." id="feed-post-input" style="flex-grow:1; font-size:0.75rem;">
+                        <button id="feed-post-submit-btn" style="font-size:0.7rem; background:#a855f7;">POST</button>
+                    </div>
+                    <div class="posts-stream-target"></div>
+                `;
+
+                feedView.querySelector('#feed-post-submit-btn').onclick = () => {
+                    const input = feedView.querySelector('#feed-post-input');
+                    if (input.value.trim()) {
+                        NetworkHub.submitPost(this.socialHandle, input.value.trim());
+                        input.value = '';
+                    }
+                };
+
+                // Render Shorts Loop layout logic
+                const shortsViewer = document.createElement('div');
+                shortsViewer.className = 'shorts-viewer';
+                NetworkHub.socialShorts.forEach(s => {
+                    const card = document.createElement('div');
+                    card.className = 'short-card';
+                    card.style.backgroundImage = s.bg;
+                    card.innerHTML = `
+                        <div class="short-overlay"></div>
+                        <div class="short-content">
+                            <span style="background:#a855f7;font-size:0.6rem;padding:2px 6px;border-radius:4px;font-weight:bold;">V2 SHORT CONTENT</span>
+                            <h4 style="margin:5px 0 2px 0; color:#fff;">${s.title}</h4>
+                            <span style="font-size:0.7rem; color:#c084fc;">${s.tag}</span>
+                        </div>
+                    `;
+                    shortsViewer.appendChild(card);
+                });
+                shortsView.appendChild(shortsViewer);
+
+                // Render DMs Base Navigation view
+                this.refreshSocialFeed();
+                this.refreshDMView();
+            }
+
+            refreshSocialFeed() {
+                const stream = this.domElement.querySelector('.posts-stream-target');
+                if (!stream) return;
+                stream.innerHTML = '';
+
+                NetworkHub.socialPosts.forEach(post => {
+                    const block = document.createElement('div');
+                    block.className = 'soc-post';
+                    block.innerHTML = `<div class="soc-handle">${post.sender}</div><div style="word-break:break-all;">${post.content}</div>`;
+                    stream.appendChild(block);
+                });
+            }
+
+            refreshDMView() {
+                const container = this.domElement.querySelector('.soc-messages');
+                if (!container) return;
+
+                // If currently nested inside a target chat window subview execution
+                if (this.activeDMTarget) {
+                    this.renderOpenDMChatWindow(container);
+                    return;
+                }
+
+                container.innerHTML = `
+                    <div style="padding:10px; background:#161618; border-bottom:1px solid #222; display:flex; flex-direction:column; gap:5px;">
+                        <label style="font-size:0.65rem; color:var(--text-muted)">Initialize secure chat link target</label>
+                        <div style="display:flex; gap:5px;">
+                            <select id="dm-recipient-select" style="flex-grow:1; font-size:0.75rem;"></select>
+                            <button id="open-dm-window-btn" style="font-size:0.7rem; background:#a855f7;">CHAT</button>
+                        </div>
+                    </div>
+                    <div class="dm-channels-list-target"></div>
+                `;
+
+                const select = container.querySelector('#dm-recipient-select');
+                NetworkHub.devices.forEach(d => {
+                    if (d.socialHandle !== this.socialHandle) {
+                        const opt = document.createElement('option');
+                        opt.value = d.socialHandle;
+                        opt.textContent = d.socialHandle;
+                        select.appendChild(opt);
+                    }
+                });
+
+                container.querySelector('#open-dm-window-btn').onclick = () => {
+                    if (select.value) {
+                        this.activeDMTarget = select.value;
+                        this.refreshDMView();
+                    }
+                };
+
+                // Deduplicate list of channels based on messages log data trace
+                const listTarget = container.querySelector('.dm-channels-list-target');
+                const interactingHandles = new Set();
+                NetworkHub.socialDMs.forEach(m => {
+                    if (m.from === this.socialHandle) interactingHandles.add(m.to);
+                    if (m.to === this.socialHandle) interactingHandles.add(m.from);
+                });
+
+                interactingHandles.forEach(handle => {
+                    const item = document.createElement('div');
+                    item.className = 'dm-chat-list-item';
+                    item.textContent = `💬 Connect Node Channel: ${handle}`;
+                    item.onclick = () => {
+                        this.activeDMTarget = handle;
+                        this.refreshDMView();
+                    };
+                    listTarget.appendChild(item);
+                });
+            }
+
+            renderOpenDMChatWindow(container) {
+                container.innerHTML = `
+                    <div class="dm-window">
+                        <div style="padding:8px 12px; background:#1c1c1e; border-bottom:1px solid #222; display:flex; justify-content:between; align-items:center;">
+                            <span style="font-size:0.75rem; color:#a855f7; font-weight:bold;">${this.activeDMTarget}</span>
+                            <span id="close-chat-subview" style="font-size:0.7rem; cursor:pointer; color:var(--text-muted)">← Back</span>
+                        </div>
+                        <div class="chat-messages-box"></div>
+                        <div class="chat-input-area">
+                            <input type="text" placeholder="Type direct payload packet..." id="chat-msg-payload-input" style="flex-grow:1; font-size:0.75rem;">
+                            <button id="send-chat-payload-btn" style="font-size:0.7rem; background:#a855f7;">SEND</button>
+                        </div>
+                    </div>
+                `;
+
+                container.querySelector('#close-chat-subview').onclick = () => {
+                    this.activeDMTarget = null;
+                    this.refreshDMView();
+                };
+
+                const msgBox = container.querySelector('.chat-messages-box');
+                NetworkHub.socialDMs.forEach(m => {
+                    if ((m.from === this.socialHandle && m.to === this.activeDMTarget) || (m.from === this.activeDMTarget && m.to === this.socialHandle)) {
+                        const b = document.createElement('div');
+                        b.className = `chat-bubble ${m.from === this.socialHandle ? 'sent' : 'rcvd'}`;
+                        b.textContent = m.content;
+                        msgBox.appendChild(b);
+                    }
+                });
+                msgBox.scrollTop = msgBox.scrollHeight;
+
+                container.querySelector('#send-chat-payload-btn').onclick = () => {
+                    const input = container.querySelector('#chat-msg-payload-input');
+                    if (input.value.trim()) {
+                        NetworkHub.sendDirectMessage(this.socialHandle, this.activeDMTarget, input.value.trim());
+                        input.value = '';
+                    }
+                };
+            }
+        }
+
+        // Workspace Grid Coordination Layer Singleton
+        const Workspace = {
+            init() {
+                this.gridElement = document.getElementById('workspace');
+                this.setupProvisioningListeners();
+
+                // Seed Initial Devices to fulfill default simulation layout environment
+                this.provisionNewDeviceNode('model-13', '#24292e', '@alpha');
+                this.provisionNewDeviceNode('model-12', '#ba1a21', '@beta');
+            },
+
+            setupProvisioningListeners() {
+                document.getElementById('add-device-btn').onclick = () => {
+                    const model = document.getElementById('device-model-select').value;
+                    const color = document.getElementById('device-color-select').value;
+                    const handle = document.getElementById('device-handle-input').value.trim();
+
+                    this.provisionNewDeviceNode(model, color, handle);
+                    document.getElementById('device-handle-input').value = '';
+                };
+            },
+
+            provisionNewDeviceNode(model, color, handle) {
+                const uniqueId = Date.now() + Math.floor(Math.random() * 1000);
+                const deviceInstance = new SimulatedDevice(uniqueId, model, color, handle);
+                
+                const renderedFrame = deviceInstance.renderStructure();
+                this.gridElement.appendChild(renderedFrame);
+                
+                NetworkHub.registerDevice(deviceInstance);
+            }
+        };
+
+        // Initialize Simulator Workspace components on execution load
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+        };
+    </script>
+</body>
+</html>
