@@ -1,0 +1,2165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network & Device Workspace - 3D VR Edition</title>
+    <style>
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #121212;
+            --bg-tertiary: #1a1a1a;
+            --border-color: #2a2a2a;
+            --text-main: #e0e0e0;
+            --text-muted: #777777;
+            --accent: #555555;
+            --accent-active: #aaaaaa;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: sans-serif;
+            scrollbar-width: none !important;
+        }
+
+        *::-webkit-scrollbar {
+            display: none !important;
+        }
+
+        body, html {
+            background-color: #000;
+            color: var(--text-main);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        /* VR Setup Overlay controls visible on desktop */
+        #vr-setup-hud {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            z-index: 100;
+            background: rgba(10, 10, 10, 0.85);
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            border-radius: 6px;
+            width: 320px;
+            font-size: 11px;
+            pointer-events: auto;
+        }
+
+        #vr-setup-hud h2 {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: #ffcc00;
+            margin-bottom: 6px;
+        }
+
+        #vr-setup-hud ul {
+            margin-left: 12px;
+            margin-top: 4px;
+            margin-bottom: 8px;
+            color: var(--text-muted);
+        }
+
+        /* Enter VR Button Placement overrides */
+        #VRButton {
+            position: absolute !important;
+            bottom: 25px !important;
+            left: 50% !important;
+            transform: translateX(-50%) !important;
+            background: #ffcc00 !important;
+            color: #000 !important;
+            border: none !important;
+            font-weight: bold !important;
+            font-size: 14px !important;
+            padding: 12px 24px !important;
+            border-radius: 4px !important;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5) !important;
+            transition: background 0.2s ease !important;
+        }
+        #VRButton:hover {
+            background: #ffe066 !important;
+        }
+
+        /* Offscreen Dom Bridge Container (Where physical elements are compiled in background for ThreeJS updates) */
+        #vr-dom-bridge {
+            position: absolute;
+            top: 0;
+            left: -99999px;
+            width: 4096px;
+            height: 4096px;
+            background: #000;
+            overflow: hidden;
+            pointer-events: auto;
+        }
+
+        /* Clean styles representing the offscreen dashboard rendering */
+        #offscreen-dashboard {
+            width: 1024px;
+            height: 512px;
+            background: var(--bg-secondary);
+            border: 4px solid var(--border-color);
+            padding: 15px;
+            display: flex;
+            gap: 15px;
+            color: var(--text-main);
+        }
+
+        .panel-section {
+            background-color: var(--bg-primary);
+            border: 1px solid var(--border-color);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            border-radius: 4px;
+        }
+
+        .panel-section h3 {
+            font-size: 12px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 4px;
+        }
+
+        #sys-controls { width: 320px; }
+        #sim-factory { width: 280px; }
+        #network-logger { flex-grow: 1; }
+
+        .log-stream {
+            font-size: 11px;
+            color: #00ff00;
+            overflow-y: auto;
+            flex-grow: 1;
+            background: #050505;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 2px;
+        }
+
+        .log-entry { margin-bottom: 4px; white-space: pre-wrap; word-break: break-all; }
+
+        button, select, input {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 6px 10px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+
+        button:hover {
+            background: var(--border-color);
+            border-color: var(--text-muted);
+        }
+
+        input { cursor: text; }
+
+        /* Render styles mimicking the phone screens */
+        .phone-wrapper {
+            position: absolute;
+            width: 260px;
+            height: 510px;
+            background: #111;
+            border-radius: 28px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        .phone-face {
+            width: 100%;
+            height: 100%;
+            border-radius: 28px;
+            border: 4px solid #333;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            background: #111;
+        }
+
+        .phone-front {
+            background: #111111;
+            color: var(--text-main);
+        }
+
+        .screen {
+            flex-grow: 1;
+            background: #000;
+            border: 1px solid #222;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            position: relative;
+            background-size: cover;
+            background-position: center;
+        }
+
+        .status-bar {
+            height: 20px;
+            background: rgba(8, 8, 8, 0.75);
+            font-size: 9px;
+            padding: 0 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(17, 17, 17, 0.3);
+            color: var(--text-muted);
+            z-index: 12;
+        }
+
+        .status-left, .status-right { display: flex; gap: 4px; align-items: center; }
+
+        .app-space {
+            flex-grow: 1;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .app-view {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(4px);
+            display: none;
+            flex-direction: column;
+            z-index: 5;
+            overflow: hidden;
+        }
+        .app-view.active { display: flex; }
+
+        .app-header {
+            height: 32px;
+            background: #0d0d0d;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            padding: 0 8px;
+            justify-content: space-between;
+            font-size: 11px;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .app-body {
+            flex-grow: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 6px;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+        }
+
+        .home-bar {
+            display: none;
+            width: 110px; height: 4px; background: #888; border-radius: 2px;
+            position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+            z-index: 100; cursor: pointer;
+        }
+        .home-bar.visible { display: block; }
+
+        .launcher-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            padding: 10px;
+            overflow-y: auto;
+        }
+        .app-icon {
+            background: rgba(13, 13, 13, 0.75);
+            border: 1px solid var(--border-color);
+            height: 58px;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            font-size: 10px;
+            gap: 2px;
+        }
+        .app-icon span { font-size: 16px; }
+
+        .pixelate-time-widget {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            margin-top: 15px;
+            color: #ffffff;
+            text-shadow: 0px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        .dialer-output {
+            background: #050505;
+            border: 1px solid #1a1a1a;
+            padding: 4px;
+            text-align: right;
+            font-size: 14px;
+            margin-bottom: 6px;
+            min-height: 24px;
+            letter-spacing: 1px;
+            flex-shrink: 0;
+        }
+        .dialer-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px;
+            margin-bottom: 6px;
+        }
+        .dial-btn {
+            background: #0c0c0c;
+            border: 1px solid #1e1e1e;
+            padding: 6px;
+            text-align: center;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .dial-btn:hover { background: #1a1a1a; }
+        .call-actions { display: flex; gap: 5px; }
+
+        .inc-call-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            text-align: center;
+        }
+        .inc-call-overlay.active { display: flex; }
+
+        .contacts-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #111;
+            border: 1px solid #222;
+            padding: 6px;
+            margin-bottom: 4px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .contact-monogram-circle {
+            width: 28px;
+            height: 28px;
+            background: #333;
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: bold;
+        }
+
+        .msg-threads { display: flex; flex-direction: column; gap: 4px; }
+        .thread-row {
+            padding: 6px; background: #090909; border: 1px solid #151515; cursor: pointer;
+        }
+        
+        .chat-stream { 
+            flex-grow: 1; 
+            overflow-y: auto; 
+            border: 1px solid #111; 
+            padding: 4px; 
+            margin-bottom: 4px; 
+            display: flex; 
+            flex-direction: column; 
+        }
+        .chat-stream.backdrop-default { background: #030303; }
+        .chat-stream.backdrop-blueprint { 
+            background-color: #0b2545; 
+            background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+            background-size: 12px 12px;
+        }
+        .chat-stream.backdrop-circuit {
+            background-color: #0c1a10;
+            background-image: radial-gradient(rgba(0, 255, 100, 0.08) 15%, transparent 20%);
+            background-size: 20px 20px;
+        }
+        .chat-stream.backdrop-dunes {
+            background: linear-gradient(180deg, #1f1a10 0%, #0d0c08 100%);
+        }
+
+        .chat-bubble { max-width: 85%; padding: 4px 6px; margin-bottom: 4px; border-radius: 4px; word-break: break-all;}
+        .chat-bubble.sent { background: #222; align-self: flex-end; }
+        .chat-bubble.rcvd { background: #222; align-self: flex-start; }
+        .chat-bubble.rcvd.platform-ios { background: #007aff; color: #fff; align-self: flex-start; }
+        .chat-bubble.rcvd.platform-android { background: #4cd964; color: #000; align-self: flex-start; }
+        .chat-bubble.rcvd.platform-samasu { background: #2ec4b6 !important; color: #fff; align-self: flex-start; }
+
+        .soc-acc-bar {
+            display: flex; gap: 3px; background: #0a0a0a; padding: 4px; border-bottom: 1px solid #1a1a1a; overflow-x: auto; flex-shrink: 0;
+            align-items: center; justify-content: space-between;
+        }
+        .mini-avatar {
+            font-size: 9px; padding: 2px 4px; background: #151515; border: 1px solid #333; cursor: pointer; white-space: nowrap;
+        }
+        .mini-avatar.active { background: #333; color: #fff; }
+        .soc-post {
+            background: #0a0a0a; border: 1px solid #1a1a1a; padding: 6px; margin-bottom: 6px; border-radius: 2px; cursor: pointer;
+        }
+        .soc-handle { color: var(--text-muted); font-size: 10px; margin-bottom: 2px; font-weight: bold; }
+
+        .soc-tabs-menu {
+            display: flex;
+            background: #080808;
+            border-bottom: 1px solid #222;
+            flex-shrink: 0;
+        }
+        .soc-tab-btn {
+            flex: 1;
+            text-align: center;
+            font-size: 9px;
+            padding: 8px 0;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+        .soc-tab-btn.active {
+            color: #fff;
+            background: #111;
+        }
+        .soc-view-panel {
+            display: none;
+            flex-grow: 1;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+        .soc-view-panel.active { display: flex; }
+
+        .ns-dm-favorites-row {
+            display: flex;
+            gap: 6px;
+            padding: 6px;
+            background: #0e0e0e;
+            border-bottom: 1px solid #1a1a1a;
+            align-items: center;
+            overflow-x: auto;
+            flex-shrink: 0;
+        }
+        .ns-dm-fav-box {
+            width: 32px;
+            height: 32px;
+            background: #252525;
+            border: 1px solid #444;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 8px;
+            font-weight: bold;
+            color: #fff;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .ns-dm-list-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 6px;
+            border-bottom: 1px solid #151515;
+            cursor: pointer;
+        }
+
+        .sticker-drawer-btn {
+            background: #333;
+            border: 1px solid #444;
+            color: #ccc;
+            font-size: 9px;
+            padding: 2px 6px;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        .sticker-popup {
+            display: none;
+            position: absolute;
+            bottom: 38px;
+            left: 5px;
+            background: #111;
+            border: 1px solid #333;
+            padding: 5px;
+            gap: 5px;
+            z-index: 200;
+            border-radius: 4px;
+        }
+        .sticker-option {
+            cursor: pointer;
+            padding: 2px;
+        }
+
+        .utility-row { display: flex; gap: 4px; margin-bottom: 4px; flex-shrink: 0; }
+        .utility-row input { flex-grow: 1; }
+
+        /* Legacy Phone bezel setups */
+        .top-bezel {
+            height: 30px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+        .speaker-grille {
+            width: 45px;
+            height: 4px;
+            background: #222;
+            border-radius: 2px;
+        }
+        .bottom-bezel {
+            height: 40px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .home-button {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #333;
+            border-radius: 50%;
+            cursor: pointer;
+            background: radial-gradient(circle, #151515 0%, #0a0a0a 100%);
+        }
+
+        /* 3D phone-back rendering logic inside flat wrapper */
+        .phone-back {
+            background: #141414;
+            color: #888;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 28px;
+            position: relative;
+        }
+        .cam-housing {
+            background: #0a0a0a;
+            border: 2px solid #2a2a2a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+        }
+        .lens {
+            width: 14px;
+            height: 14px;
+            background: radial-gradient(circle, #0e1318 0%, #030405 100%);
+            border-radius: 50%;
+            border: 1px solid #111;
+        }
+        .hardware-info {
+            text-align: center;
+            font-size: 8px;
+            text-transform: uppercase;
+            line-height: 12px;
+            opacity: 0.7;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- On-screen Desktop overlay explaining controls -->
+    <div id="vr-setup-hud">
+        <h2>VR Virtual Workbench</h2>
+        <p>A WebXR simulation platform supporting both physical VR headsets and traditional flatscreen environments.</p>
+        <p style="margin-top: 6px; font-weight: bold; color: #ffcc00;">Desktop Controls:</p>
+        <ul>
+            <li><strong>Left-Click + Drag Background:</strong> Orbit scene view</li>
+            <li><strong>Left-Click Objects:</strong> Pointer click screens & systems</li>
+            <li><strong>Right-Click + Drag Objects:</strong> Slide devices across physical workspace</li>
+            <li><strong>Shift + Raycast Screen:</strong> Fast flip/inspect back chassis specs</li>
+        </ul>
+        <p style="font-weight: bold; color: #ffcc00;">VR Headset Controls:</p>
+        <ul>
+            <li><strong>Pointer Ray + Trigger:</strong> Interact with screen/dashboard</li>
+            <li><strong>Controller Proximity + Grip:</strong> Grab, slide, or hold phone</li>
+            <li><strong>A/X Button (When holding):</strong> Flip physical phone chassis</li>
+        </ul>
+        <div style="font-size:9px; color:var(--text-muted); border-top: 1px solid var(--border-color); padding-top:6px; margin-top:4px;">
+            To modify hardware colors, select a profile in the System controls inside the workspace's floating main dashboard monitor.
+        </div>
+    </div>
+
+    <!-- Background Dom bridge container holding dynamic canvas texture source points -->
+    <div id="vr-dom-bridge">
+        <div id="offscreen-dashboard">
+            <div class="panel-section" id="sys-controls">
+                <h3>System Controls</h3>
+                <div style="display: flex; flex-direction: column; gap: 4px; overflow-y:auto; flex-grow:1;">
+                    <div>
+                        <label style="font-size:8px; color:var(--text-muted)">CHASSIS ECOSYSTEM:</label>
+                        <select id="spawn-model" style="width:100%; margin-top:1px; font-size:10px;" onchange="UiEngine.handleModelChange()">
+                            <optgroup label="iOS-Style Architectures">
+                                <option value="m-15">Model 15 (Modern Dynamic Face)</option>
+                                <option value="m-15p">Model 15 Pro (Titanium Triple)</option>
+                                <option value="m-8">Model 8 (Legacy Home-Button)</option>
+                            </optgroup>
+                            <optgroup label="Pixelate Series (Android-style)">
+                                <option value="p8">Pixelate 8 (Satin Horizon Visor)</option>
+                                <option value="p1">Pixelate 1 (Legacy Dual-Tone)</option>
+                            </optgroup>
+                            <optgroup label="Samasu Series (Samsung-style)">
+                                <option value="sa26">Samasu sa26 (Titanium Flat Pro)</option>
+                                <option value="sa5">Samasu sa5 (Textured Classic)</option>
+                            </optgroup>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="font-size:8px; color:var(--text-muted)">SHELL FINISH / PAINT COAT:</label>
+                        <select id="spawn-color" style="width:100%; margin-top:1px; font-size:10px;">
+                            <option value="matte-black">Matte Black</option>
+                            <option value="industrial-gray">Industrial Gray</option>
+                            <option value="monochrome-white">Monochrome White</option>
+                            <option value="natural-titanium">Natural Titanium</option>
+                            <option value="product-red">Product RED</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:4px; margin-top:4px;">
+                        <button onclick="Workspace.spawnDevice()" style="flex-grow:1; font-weight:bold; font-size:10px; background:#1e1e1e;">+ SPAWN PHONE</button>
+                        <button onclick="Workspace.spawnRouter()" style="font-size:10px;">+ WIRELESS GATEWAY</button>
+                    </div>
+                    <div style="font-size:8px; color:var(--text-muted); text-align:center; margin-top:6px;">
+                        Hover on the highlighted lateral brackets on active 3D phones to select/mount SIMs.
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-section" id="sim-factory">
+                <h3>SIM Provisioning Factory</h3>
+                <div style="display: flex; flex-direction: column; gap: 6px; flex-grow:1; justify-content:center;">
+                    <div class="utility-row">
+                        <input type="text" id="sim-msisdn" placeholder="10-Digit No." maxlength="10" style="font-size:10px;">
+                        <button onclick="NetworkHub.generateSim()" style="background:#1a1a1a;">GENERATE</button>
+                    </div>
+                    <div style="font-size:10px; color:var(--text-muted); text-align:center;">Active Cards In Workspace: <span id="sim-count" style="color:var(--text-main); font-weight:bold;">0</span></div>
+                </div>
+            </div>
+
+            <div class="panel-section" id="network-logger">
+                <h3>Topology Live Log Packet Stream</h3>
+                <div class="log-stream" id="log-container">
+                    <div class="log-entry">[System] Spatial Core Engine Initialized. WebXR bindings linked. Enter VR mode or interact directly from desktop.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- CDN Modules imports containing ThreeJS, OrbitControls, and html2canvas texture generator -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/webxr/VRButton.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <script>
+        // UI Customizer Engine
+        const UiEngine = {
+            handleModelChange() {
+                const model = document.getElementById('spawn-model').value;
+                const colorSelect = document.getElementById('spawn-color');
+                colorSelect.innerHTML = '';
+                
+                if (model === 'm-15p') {
+                    colorSelect.innerHTML = `
+                        <option value="natural-titanium">Natural Titanium</option>
+                        <option value="black-titanium">Black Titanium</option>
+                    `;
+                } else if (model.startsWith('p')) {
+                    colorSelect.innerHTML = `
+                        <option value="quite-black">Quite Black</option>
+                        <option value="very-silver">Very Silver</option>
+                    `;
+                } else {
+                    colorSelect.innerHTML = `
+                        <option value="matte-black">Matte Black</option>
+                        <option value="industrial-gray">Industrial Gray</option>
+                        <option value="monochrome-white">Monochrome White</option>
+                        <option value="product-red">Product RED</option>
+                    `;
+                }
+            }
+        };
+
+        // Routing Database core engine representing wireless and network linkages
+        const NetworkHub = {
+            sims: {}, 
+            socialAccounts: {}, 
+            socialPosts: [], 
+            activeCalls: {}, 
+            routers: {},
+            netspaceDMs: {},
+
+            init() {
+                this.socialAccounts["@network_ops"] = { handle: "@network_ops", pass: "123", followers: ["@echo_bot"], following: [] };
+                this.socialAccounts["@echo_bot"] = { handle: "@echo_bot", pass: "123", followers: [], following: ["@network_ops"] };
+                
+                this.socialPosts.push({ sender: "@network_ops", content: "Mainframe network nodes bridged in 3D environment space." });
+                this.socialPosts.push({ sender: "@echo_bot", content: "Echo agent listening. Handsets connected." });
+            },
+
+            log(module, text) {
+                const containers = [document.getElementById('log-container')];
+                containers.forEach(container => {
+                    if (container) {
+                        const entry = document.createElement('div');
+                        entry.className = 'log-entry';
+                        entry.innerText = `[${module}] ${text}`;
+                        container.appendChild(entry);
+                        container.scrollTop = container.scrollHeight;
+                    }
+                });
+                // Request a frame render update for the floating main monitor
+                if (Workspace.dashboardMesh) {
+                    Workspace.dashboardMesh.userData.needsUpdate = true;
+                }
+            },
+
+            generateSim() {
+                const input = document.getElementById('sim-msisdn');
+                let number = input.value.trim();
+                if(!number) {
+                    number = Math.floor(100000 + Math.random() * 900000).toString();
+                }
+                if(this.sims[number]) {
+                    this.log("Carrier Error", "MSISDN identity already provisioned.");
+                    return;
+                }
+                this.sims[number] = {
+                    phoneNumber: number,
+                    allocatedTo: null, 
+                    messages: {} 
+                };
+                this.log("Carrier", `SIM Activated: +1 (${number})`);
+                input.value = '';
+                this.updateSimCount();
+                
+                // Repopulate dynamic selects on available phones
+                Object.values(Workspace.devices).forEach(dev => dev.populateSimSelector());
+            },
+
+            updateSimCount() {
+                const countText = document.getElementById('sim-count');
+                if (countText) countText.innerText = Object.keys(this.sims).length;
+                if (Workspace.dashboardMesh) Workspace.dashboardMesh.userData.needsUpdate = true;
+            },
+
+            calculateLatency(phoneA_Id, phoneB_Id) {
+                const pA = Workspace.devices[phoneA_Id];
+                const pB = Workspace.devices[phoneB_Id];
+                if(!pA || !pB) return { distance: 0, latency: 10 };
+                
+                // Real geometric spatial calculations inside the 3D room
+                const dx = pA.mesh.position.x - pB.mesh.position.x;
+                const dy = pA.mesh.position.y - pB.mesh.position.y;
+                const dz = pA.mesh.position.z - pB.mesh.position.z;
+                const distance = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                const latency = Math.round(distance * 35);
+                return { distance: Math.round(distance * 100) / 100, latency: Math.max(10, latency) };
+            },
+
+            routeSMS(fromNum, toNum, message, originatingPhoneId) {
+                const targetSim = this.sims[toNum];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("Router", `Packet lost: Target MSISDN +1 (${toNum}) unreachable.`);
+                    return false;
+                }
+
+                const targetPhoneId = targetSim.allocatedTo;
+                const targetDevice = Workspace.devices[targetPhoneId];
+                
+                if(targetDevice && targetDevice.blockedNumbers.includes(fromNum)) {
+                    this.log("Router", `Message rejected: Sender blocked by target.`);
+                    return false;
+                }
+
+                const metrics = this.calculateLatency(originatingPhoneId, targetPhoneId);
+                this.log("Router", `Routing SMS [${fromNum} -> ${toNum}] | SpatDist: ${metrics.distance}m -> Delay: ${metrics.latency}ms`);
+                
+                const originDevice = Workspace.devices[originatingPhoneId];
+                const platformLabel = originDevice ? originDevice.osType : 'ios';
+
+                setTimeout(() => {
+                    const targetDeviceInstance = Workspace.devices[targetPhoneId];
+                    if(targetDeviceInstance) {
+                        targetDeviceInstance.receiveSMS(fromNum, message, platformLabel);
+                    }
+                }, metrics.latency);
+                return true;
+            },
+
+            initiateCall(fromNum, toNum, originatingPhoneId) {
+                const targetSim = this.sims[toNum];
+                if(!targetSim || !targetSim.allocatedTo) {
+                    this.log("Carrier Switch", `Call aborted: +1 (${toNum}) is out of service area.`);
+                    return "FAILED";
+                }
+
+                const targetPhoneId = targetSim.allocatedTo;
+                const targetDevice = Workspace.devices[targetPhoneId];
+                
+                if(targetDevice && targetDevice.blockedNumbers.includes(fromNum)) {
+                    this.log("Carrier Switch", `Circuit refused by target.`);
+                    return "BUSY";
+                }
+
+                if(targetPhoneId === originatingPhoneId) return "BUSY";
+                
+                const metrics = this.calculateLatency(originatingPhoneId, targetPhoneId);
+                this.log("Carrier Switch", `Establishing spatial connection [${fromNum} -> ${toNum}]`);
+
+                setTimeout(() => {
+                    const targetDeviceInstance = Workspace.devices[targetPhoneId];
+                    if(targetDeviceInstance) {
+                        targetDeviceInstance.triggerIncomingCall(fromNum, originatingPhoneId);
+                    }
+                }, metrics.latency);
+                return "ROUTING";
+            },
+
+            connectCall(phoneIdA, phoneIdB) {
+                this.activeCalls[phoneIdA] = phoneIdB;
+                this.activeCalls[phoneIdB] = phoneIdA;
+                this.log("Carrier Switch", `Voice Circuit Locked: Handset #${phoneIdA} <=> Handset #${phoneIdB}`);
+                
+                if(Workspace.devices[phoneIdA]) Workspace.devices[phoneIdA].establishCallConnection();
+                if(Workspace.devices[phoneIdB]) Workspace.devices[phoneIdB].establishCallConnection();
+            },
+
+            terminateCall(phoneId) {
+                const peerId = this.activeCalls[phoneId];
+                delete this.activeCalls[phoneId];
+                if(peerId) {
+                    delete this.activeCalls[peerId];
+                    const peerDevice = Workspace.devices[peerId];
+                    if(peerDevice) peerDevice.hangupCall(false);
+                }
+            },
+
+            publishSocialPost(sender, content, originatingPhoneId) {
+                this.socialPosts.unshift({ sender, content });
+                Object.values(Workspace.devices).forEach(dev => {
+                    const metrics = this.calculateLatency(originatingPhoneId, dev.id);
+                    setTimeout(() => { dev.refreshSocialFeed(); }, metrics.latency);
+                });
+                this.log("NetSpace DB", `${sender} posted status update.`);
+            },
+
+            sendSocialDM(fromUser, toUser, messageText) {
+                const threadKey = [fromUser, toUser].sort().join("<=>");
+                if(!this.netspaceDMs[threadKey]) {
+                    this.netspaceDMs[threadKey] = [];
+                }
+                this.netspaceDMs[threadKey].push({
+                    sender: fromUser,
+                    content: messageText
+                });
+
+                Object.values(Workspace.devices).forEach(dev => {
+                    if(dev.activeApp === 'netspace' && dev.activeSocialSubTab === 'dms') {
+                        if(dev.activeSocialDMPeer === fromUser && dev.activeSocialUser === toUser) {
+                            dev.renderSocialDMChat(fromUser);
+                        } else if(dev.activeSocialDMPeer === toUser && dev.activeSocialUser === fromUser) {
+                            dev.renderSocialDMChat(toUser);
+                        }
+                        dev.renderSocialDMView();
+                    }
+                });
+
+                this.log("NetSpace DB", `DM packet routed: ${fromUser} -> ${toUser}`);
+            }
+        };
+
+        // 3D/VR Workspace Orchestrator
+        const Workspace = {
+            devices: {},
+            routers: {},
+            deviceCount: 0,
+            routerCount: 0,
+            
+            // WebGL / ThreeJS core parameters
+            scene: null,
+            camera: null,
+            renderer: null,
+            controls: null,
+            dashboardMesh: null,
+            
+            // Interaction tracking arrays
+            interactableObjects: [],
+            grabbedObject: null,
+            grabController: null,
+            tempMatrix: new THREE.Matrix4(),
+            
+            init() {
+                // Main room construction scene config
+                this.scene = new THREE.Scene();
+                this.scene.background = new THREE.Color(0x0a0a0c);
+                this.scene.fog = new THREE.FogExp2(0x0a0a0c, 0.08);
+
+                this.camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 100);
+                this.camera.position.set(0, 1.6, 1.2); // standing workbench distance height
+
+                this.renderer = new THREE.WebGLRenderer({ antialias: true });
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.shadowMap.enabled = true;
+                this.renderer.xr.enabled = true;
+                document.body.appendChild(this.renderer.domElement);
+
+                // Add standard VR Enter Overlay trigger
+                document.body.appendChild(VRButton.createButton(this.renderer));
+
+                // Table desktop controls
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.target.set(0, 0.8, -0.4);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.05;
+                this.controls.maxPolarAngle = Math.PI / 2 - 0.05; // prevent passing floor
+
+                this.buildEnvironmentLighting();
+                this.buildRoom();
+                this.buildDashboardMonitor();
+
+                this.setupVRInput();
+                this.setupDesktopInteractions();
+
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                });
+
+                // Spawn initial devices on table surface
+                this.spawnDevice(0.2, "m-15", "matte-black");
+                this.spawnDevice(-0.2, "sa26", "natural-titanium");
+                this.spawnRouter(0, "Default_Gateway_5G");
+
+                this.animate();
+            },
+
+            buildEnvironmentLighting() {
+                const ambient = new THREE.AmbientLight(0xffffff, 0.25);
+                this.scene.add(ambient);
+
+                const spot = new THREE.SpotLight(0xffffff, 1.2);
+                spot.position.set(0, 3.5, 0);
+                spot.angle = Math.PI / 3;
+                spot.penumbra = 0.8;
+                spot.castShadow = true;
+                spot.shadow.mapSize.width = 1024;
+                spot.shadow.mapSize.height = 1024;
+                this.scene.add(spot);
+
+                const dirLight = new THREE.DirectionalLight(0x5588ff, 0.5);
+                dirLight.position.set(2, 2.5, -1);
+                this.scene.add(dirLight);
+            },
+
+            buildRoom() {
+                // Room dark workspace floor grid
+                const grid = new THREE.GridHelper(30, 60, 0x333333, 0x1a1a1a);
+                grid.position.y = -0.01;
+                this.scene.add(grid);
+
+                // Spatial control table
+                const tableGeo = new THREE.BoxGeometry(1.6, 0.8, 0.9);
+                const tableMat = new THREE.MeshStandardMaterial({
+                    color: 0x141416,
+                    roughness: 0.35,
+                    metalness: 0.8
+                });
+                const table = new THREE.Mesh(tableGeo, tableMat);
+                table.position.set(0, 0.4, -0.4);
+                table.receiveShadow = true;
+                table.castShadow = true;
+                this.scene.add(table);
+            },
+
+            buildDashboardMonitor() {
+                // Renders the complex dashboard controls to a virtual dashboard monitor placed above table
+                const canvas = document.createElement('canvas');
+                canvas.width = 1024;
+                canvas.height = 512;
+                const texture = new THREE.CanvasTexture(canvas);
+                
+                const monitorGeo = new THREE.PlaneGeometry(1.4, 0.7);
+                const monitorMat = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide });
+                this.dashboardMesh = new THREE.Mesh(monitorGeo, monitorMat);
+                this.dashboardMesh.position.set(0, 1.35, -0.8);
+                this.dashboardMesh.rotation.x = 0.05;
+                this.scene.add(this.dashboardMesh);
+
+                this.dashboardMesh.userData = {
+                    type: "dashboard",
+                    canvas: canvas,
+                    texture: texture,
+                    needsUpdate: true
+                };
+                this.interactableObjects.push(this.dashboardMesh);
+            },
+
+            setupVRInput() {
+                // Controller 1
+                const c1 = this.renderer.xr.getController(0);
+                c1.addEventListener('selectstart', (e) => this.onSelectStart(e));
+                c1.addEventListener('selectend', (e) => this.onSelectEnd(e));
+                c1.addEventListener('squeezestart', (e) => this.onSqueezeStart(e));
+                c1.addEventListener('squeezeend', (e) => this.onSqueezeEnd(e));
+                this.scene.add(c1);
+
+                // Controller 2
+                const c2 = this.renderer.xr.getController(1);
+                c2.addEventListener('selectstart', (e) => this.onSelectStart(e));
+                c2.addEventListener('selectend', (e) => this.onSelectEnd(e));
+                c2.addEventListener('squeezestart', (e) => this.onSqueezeStart(e));
+                c2.addEventListener('squeezeend', (e) => this.onSqueezeEnd(e));
+                this.scene.add(c2);
+
+                // Controller Ray lines for precise targeting inside room
+                const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                    new THREE.Vector3(0,0,0),
+                    new THREE.Vector3(0,0,-5)
+                ]);
+                const lineMat = new THREE.LineBasicMaterial({ color: 0xffcc00 });
+                
+                const line1 = new THREE.Line(lineGeo, lineMat);
+                c1.add(line1);
+                const line2 = new THREE.Line(lineGeo, lineMat);
+                c2.add(line2);
+            },
+
+            onSelectStart(event) {
+                const controller = event.target;
+                const tempMatrix = new THREE.Matrix4();
+                tempMatrix.identity().extractRotation(controller.matrixWorld);
+
+                const raycaster = new THREE.Raycaster();
+                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+                const intersects = raycaster.intersectObjects(this.interactableObjects);
+                if (intersects.length > 0) {
+                    const hit = intersects[0];
+                    this.dispatchInteraction(hit);
+                }
+            },
+
+            onSelectEnd(event) {},
+
+            onSqueezeStart(event) {
+                const controller = event.target;
+                const raycaster = new THREE.Raycaster();
+                const tempMatrix = new THREE.Matrix4();
+                tempMatrix.identity().extractRotation(controller.matrixWorld);
+                raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+                raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+
+                const intersects = raycaster.intersectObjects(this.interactableObjects);
+                if (intersects.length > 0) {
+                    const hit = intersects[0];
+                    // Verify if hitting grabbable object
+                    if (hit.object.userData && hit.object.userData.grabbable) {
+                        this.grabbedObject = hit.object;
+                        this.grabController = controller;
+                        
+                        // Temporarily mount grabbed object onto virtual controller hand
+                        controller.attach(this.grabbedObject);
+                    }
+                }
+            },
+
+            onSqueezeEnd(event) {
+                if (this.grabbedObject && event.target === this.grabController) {
+                    this.scene.attach(this.grabbedObject);
+                    this.grabbedObject = null;
+                    this.grabController = null;
+                }
+            },
+
+            setupDesktopInteractions() {
+                const raycaster = new THREE.Raycaster();
+                const mouse = new THREE.Vector2();
+
+                window.addEventListener('mousedown', (e) => {
+                    // Prevent catching UI dashboard clicks if user clicked configuration menu
+                    if (e.target.tagName === 'SELECT' || e.target.tagName === 'BUTTON' || e.target.tagName === 'INPUT') return;
+
+                    mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
+                    mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
+                    raycaster.setFromCamera(mouse, this.camera);
+
+                    const intersects = raycaster.intersectObjects(this.interactableObjects);
+                    if (intersects.length > 0) {
+                        const hit = intersects[0];
+                        
+                        // Standard Interaction
+                        if (e.button === 0) {
+                            if (e.shiftKey && hit.object.userData.type === "phone") {
+                                // Fast desktop-debug flip toggle when shifting and clicking
+                                hit.object.userData.parent.flipChassis();
+                            } else {
+                                this.dispatchInteraction(hit);
+                            }
+                        }
+                    }
+                });
+            },
+
+            dispatchInteraction(hit) {
+                const obj = hit.object;
+                const uv = hit.uv;
+
+                if (obj.userData.type === "dashboard") {
+                    const localX = uv.x * 1024;
+                    const localY = (1 - uv.y) * 512;
+                    this.dispatchDomEvent(document.getElementById('offscreen-dashboard'), localX, localY);
+                    obj.userData.needsUpdate = true;
+                } 
+                else if (obj.userData.type === "phone") {
+                    const parent = obj.userData.parent;
+                    const localX = uv.x * 260;
+                    const localY = (1 - uv.y) * 510;
+                    
+                    // Route interaction to the background phone wrapper instance
+                    this.dispatchDomEvent(parent.domElement, localX, localY);
+                    parent.queueUpdate();
+                }
+                else if (obj.userData.type === "tray") {
+                    const parent = obj.userData.parent;
+                    parent.triggerTrayCycle();
+                }
+            },
+
+            dispatchDomEvent(target, localX, localY) {
+                const rect = target.getBoundingClientRect();
+                const globalX = rect.left + localX;
+                const globalY = rect.top + localY;
+
+                const element = document.elementFromPoint(globalX, globalY);
+                if (element) {
+                    const opts = { bubbles: true, cancelable: true, clientX: globalX, clientY: globalY };
+                    element.dispatchEvent(new MouseEvent('mousedown', opts));
+                    element.focus();
+                    element.dispatchEvent(new MouseEvent('mouseup', opts));
+                    element.dispatchEvent(new MouseEvent('click', opts));
+                    
+                    if (element.tagName === 'SELECT') {
+                        // Cycles values dynamically inside VR if dropdown is clicked
+                        const nextIdx = (element.selectedIndex + 1) % element.options.length;
+                        element.selectedIndex = nextIdx;
+                        element.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            },
+
+            spawnDevice(offsetX = 0, chosenModel = null, chosenColor = null) {
+                this.deviceCount++;
+                const id = this.deviceCount;
+                const model = chosenModel || document.getElementById('spawn-model').value;
+                const color = chosenColor || document.getElementById('spawn-color').value;
+
+                // Position on workstation desk
+                const posX = offsetX !== 0 ? offsetX : (Math.random() - 0.5) * 0.8;
+                const posY = 0.805; // rested slightly above desk height
+                const posZ = -0.35 + (Math.random() - 0.5) * 0.25;
+
+                const phone = new PhoneInstance(id, posX, posY, posZ, model, color);
+                this.devices[id] = phone;
+                
+                this.log("Workspace", `Spawned spatial node Handset #${id} [${model.toUpperCase()}]`);
+                phone.queueUpdate();
+            },
+
+            spawnRouter(offsetX = 0, ssid = null) {
+                this.routerCount++;
+                const id = this.routerCount;
+                const posX = offsetX !== 0 ? offsetX : (Math.random() - 0.5) * 0.4;
+                const posY = 0.82;
+                const posZ = -0.6;
+                const routerSsid = ssid || `WiFi_Router_${id}`;
+
+                const router = new RouterInstance(id, posX, posY, posZ, routerSsid);
+                this.routers[id] = router;
+                this.log("Workspace", `Spawned Wireless Gateway Node [SSID: ${routerSsid}]`);
+            },
+
+            animate() {
+                this.renderer.setAnimationLoop(() => this.renderTick());
+            },
+
+            renderTick() {
+                // Smooth camera damping inside desktop mode
+                if (this.controls) this.controls.update();
+
+                // Live dynamic render updates for offscreen DOM textures
+                if (this.dashboardMesh && this.dashboardMesh.userData.needsUpdate) {
+                    const monitor = document.getElementById('offscreen-dashboard');
+                    html2canvas(monitor, {
+                        backgroundColor: null,
+                        logging: false,
+                        scale: 1.5,
+                        width: 1024,
+                        height: 512
+                    }).then(canvas => {
+                        const tex = this.dashboardMesh.userData.texture;
+                        tex.image = canvas;
+                        tex.needsUpdate = true;
+                    });
+                    this.dashboardMesh.userData.needsUpdate = false;
+                }
+
+                // Call automatic clock and status sync adjustments on workspace instances
+                Object.values(this.devices).forEach(phone => {
+                    if (phone.needsTextureUpdate) {
+                        phone.renderToTexture();
+                    }
+                });
+
+                this.renderer.render(this.scene, this.camera);
+            }
+        };
+
+        // VR Physical Interactive Phone Instance
+        class PhoneInstance {
+            constructor(id, x, y, z, model, color) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                this.model = model;
+                this.color = color;
+                
+                // OS Parameters
+                this.flipped = false;
+                this.currentSim = null;
+                this.activeApp = "launcher";
+                this.connectedWifiSSID = "DISCONNECTED";
+                this.currentWallpaper = "none";
+                this.activeCallData = null;
+                this.callTimerInterval = null;
+                this.socialAccountsCache = [];
+                this.activeSocialUser = null;
+                this.activeSocialSubTab = "feed";
+                this.activeSocialDMPeer = null;
+                this.socialFavorites = [];
+                this.blockedNumbers = [];
+                this.archivedThreads = [];
+                this.messagesViewMode = "inbox";
+                this.contacts = [
+                    { name: "Global Carrier Ops", number: "12345", monogram: "GC" },
+                    { name: "System Echo Agent", number: "99999", monogram: "EA" }
+                ];
+
+                this.needsTextureUpdate = false;
+                this.updateQueued = false;
+
+                // Determine branding series categories
+                if (this.model.startsWith('p')) {
+                    this.osType = 'android';
+                } else if (this.model.startsWith('sa')) {
+                    this.osType = 'samasu';
+                } else {
+                    this.osType = 'ios';
+                }
+
+                this.buildHtmlDom();
+                this.build3DGeometry();
+                this.bindHtmlEvents();
+                this.initOS();
+
+                // Periodic clock update
+                this.clockInterval = setInterval(() => this.clockTick(), 10000);
+            }
+
+            buildHtmlDom() {
+                // Appends a flat, offscreen element used as the mapping texture source point
+                this.domElement = document.createElement('div');
+                this.domElement.id = `phone-dom-id-${this.id}`;
+                this.domElement.className = `phone-wrapper ${this.model}`;
+                
+                // Position in grid far below room viewports to layout styles properly
+                this.domElement.style.top = "1000px";
+                this.domElement.style.left = `${(this.id - 1) * 300}px`;
+
+                this.frontTheme = ["monochrome-white", "very-silver"].includes(this.color) ? "white" : "black";
+
+                let frontOverlays = '';
+                if (this.osType === 'android') {
+                    frontOverlays = `<div style="position:absolute; top:8px; left:50%; transform:translateX(-50%); width:8px; height:8px; background:#000; border-radius:50%; z-index:100;"></div>`;
+                }
+
+                this.domElement.innerHTML = `
+                    <div class="phone-face phone-front" data-color="${this.color}" data-front-theme="${this.frontTheme}">
+                        <div class="top-bezel">
+                            <div class="speaker-grille"></div>
+                        </div>
+                        <div class="screen" id="screen-viewport-${this.id}">
+                            ${frontOverlays}
+                            <div class="status-bar">
+                                <div class="status-left">
+                                    <span class="unread-status-indicator" style="margin-right:2px; font-weight:bold;"></span>
+                                    <span class="carrier-tag">NO LINK</span>
+                                    <span class="signal-bars">▱▱▱▱</span>
+                                </div>
+                                <div class="status-right">
+                                    <span class="wifi-indicator-tag" style="font-size:8px;">📶 OFF</span>
+                                    <span class="sim-time">00:00</span>
+                                </div>
+                            </div>
+                            <div class="app-space">
+                                <div class="inc-call-overlay">
+                                    <div style="font-size:10px; color:#aaa; margin-bottom:12px;">INCOMING CELLULAR PATH</div>
+                                    <div class="inc-caller-id" style="font-size:14px; font-weight:bold; margin-bottom:20px;">+1 (000)</div>
+                                    <div style="display:flex; gap:10px;">
+                                        <button class="accept-btn" style="background:#0f330f; border-color:#0f550f; font-weight:bold; font-size:9px;">ACCEPT</button>
+                                        <button class="decline-btn" style="background:#330f0f; border-color:#550f0f; font-size:9px;">DECLINE</button>
+                                    </div>
+                                </div>
+                                
+                                <div class="app-view active" data-app="launcher">
+                                    <div class="pixelate-launcher">
+                                        <div class="pixelate-time-widget sim-time">12:00</div>
+                                        <div class="launcher-grid">
+                                            <div class="app-icon" data-launch="phone"><span>📞</span>Phone</div>
+                                            <div class="app-icon" data-launch="messages"><span>💬</span>Messages</div>
+                                            <div class="app-icon" data-launch="contacts"><span>👥</span>Contacts</div>
+                                            <div class="app-icon" data-launch="netspace"><span>🌐</span>Netspace</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="app-view" data-app="phone">
+                                    <div class="app-header"><span>📞 Dialer</span><button class="app-close">X</button></div>
+                                    <div class="app-body">
+                                        <div class="dialer-output"></div>
+                                        <div class="dialer-pad">
+                                            <div class="dial-btn">1</div><div class="dial-btn">2</div><div class="dial-btn">3</div>
+                                            <div class="dial-btn">4</div><div class="dial-btn">5</div><div class="dial-btn">6</div>
+                                            <div class="dial-btn">7</div><div class="dial-btn">8</div><div class="dial-btn">9</div>
+                                            <div class="dial-btn">*</div><div class="dial-btn">0</div><div class="dial-btn">#</div>
+                                        </div>
+                                        <div class="call-actions">
+                                            <button class="phone-call-trigger" style="background:#113311; font-weight:bold; flex-grow:1;">CALL</button>
+                                            <button class="phone-clear-trigger" style="background:#222;">CLR</button>
+                                        </div>
+                                        <div class="active-call-state" style="display:none; text-align:center; padding-top:10px;">
+                                            <div class="call-status-label" style="color:#00ff00; font-size:10px; margin-bottom:4px;">CONNECTED</div>
+                                            <div class="call-timer" style="font-size:14px; font-weight:bold; margin-bottom:10px;">00:00</div>
+                                            <button class="phone-hangup-trigger" style="background:#331111; width:100%;">DISCONNECT</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="app-view" data-app="messages">
+                                    <div class="app-header"><span>💬 Messages</span><button class="app-close">X</button></div>
+                                    <div class="app-body" data-view="threads">
+                                        <div class="msg-threads" style="flex-grow:1; overflow-y:auto;"></div>
+                                    </div>
+                                    <div class="app-body" data-view="chat" style="display:none;">
+                                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; border-bottom:1px solid #222; padding-bottom:3px;">
+                                            <button class="back-to-threads-btn" style="padding:2px 6px; font-size:9px;">&lt; Back</button>
+                                            <span class="active-chat-title" style="font-size:10px; font-weight:bold; color:#ffcc00;">+1 000</span>
+                                        </div>
+                                        <div class="chat-stream backdrop-default"></div>
+                                        <div class="utility-row">
+                                            <input type="text" class="sms-input-field" placeholder="Type message..." style="font-size:9px;">
+                                            <button class="sms-send-trigger" style="font-size:9px;">SEND</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="app-view" data-app="contacts">
+                                    <div class="app-header"><span>👥 Contacts</span><button class="app-close">X</button></div>
+                                    <div class="app-body" data-view="contacts-list">
+                                        <div class="contacts-stream" style="flex-grow: 1; overflow-y: auto;"></div>
+                                    </div>
+                                </div>
+
+                                <div class="app-view" data-app="netspace">
+                                    <div class="app-header"><span>🌐 NetSpace</span><button class="app-close">X</button></div>
+                                    <div class="soc-auth-screen app-body" style="display:flex; gap:6px; justify-content:center;">
+                                        <input type="text" class="soc-handle-input" placeholder="@username" style="font-size:10px;">
+                                        <button class="soc-login-trigger" style="background:#222;">AUTHENTICATE</button>
+                                    </div>
+                                    <div class="soc-main-screen app-body" style="display:none; padding:0;">
+                                        <div class="soc-acc-bar">
+                                            <div class="soc-accounts-avatars-box" style="display:flex; gap:4px; overflow-x:auto;"></div>
+                                            <button class="soc-logout-trigger" style="background:#331111; font-size:8px;">LOGOUT</button>
+                                        </div>
+                                        <div class="soc-tabs-menu">
+                                            <div class="soc-tab-btn active" data-subtab="feed">FEED</div>
+                                            <div class="soc-tab-btn" data-subtab="dms">DMs</div>
+                                        </div>
+                                        <div class="soc-view-panel active" id="soc-view-feed" style="padding:6px;">
+                                            <div class="soc-timeline" style="flex-grow:1; overflow-y:auto; margin-bottom:4px;"></div>
+                                            <div class="utility-row">
+                                                <input type="text" class="soc-post-input" placeholder="What's happening?" style="font-size:9px;">
+                                                <button class="soc-post-trigger" style="font-size:9px;">POST</button>
+                                            </div>
+                                        </div>
+                                        <div class="soc-view-panel" id="soc-view-dms" style="padding:0; display:none; flex-direction:column;">
+                                            <div class="soc-dms-thread-list" style="flex-grow:1; overflow-y:auto; padding:6px;">
+                                                <div class="utility-row">
+                                                    <select class="ns-dm-initiate-select" style="font-size:9px; flex-grow:1;"></select>
+                                                    <button class="ns-dm-initiate-btn" style="font-size:9px;">+ CHAT</button>
+                                                </div>
+                                                <div class="ns-dm-contacts-target-list"></div>
+                                            </div>
+                                            <div class="soc-dms-chat-panel" style="display:none; flex-direction:column; flex-grow:1; padding:6px;">
+                                                <div class="app-header" style="background:none; border:none; margin-bottom:4px;">
+                                                    <button class="back-to-dm-list-btn" style="padding:2px 6px; font-size:9px;">&lt; Back</button>
+                                                    <span class="dm-peer-title" style="font-size:9px; color:#ffcc00;">@username</span>
+                                                </div>
+                                                <div class="soc-dm-window-stream" style="flex-grow:1; background:#050505; border:1px solid #222; overflow-y:auto; padding:4px; display:flex; flex-direction:column; gap:4px; margin-bottom:4px;"></div>
+                                                <div class="utility-row">
+                                                    <input type="text" class="soc-dm-msg-input" placeholder="Type DM..." style="font-size:9px;">
+                                                    <button class="soc-dm-send-trigger" style="font-size:9px;">SEND</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="home-bar visible"></div>
+                        </div>
+                        <div class="bottom-bezel">
+                            <div class="home-button"></div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('vr-dom-bridge').appendChild(this.domElement);
+            }
+
+            build3DGeometry() {
+                // Models handsets as standard, physical double-sided panels on desk
+                this.frontCanvas = document.createElement('canvas');
+                this.frontCanvas.width = 260;
+                this.frontCanvas.height = 510;
+                this.frontTexture = new THREE.CanvasTexture(this.frontCanvas);
+
+                this.backCanvas = document.createElement('canvas');
+                this.backCanvas.width = 260;
+                this.backCanvas.height = 510;
+                this.backTexture = new THREE.CanvasTexture(this.backCanvas);
+
+                // Geometrical size representing approximate realistic proportions (0.26m tall, 0.13m wide, 1.5cm thick)
+                const phoneGeo = new THREE.BoxGeometry(0.13, 0.26, 0.015);
+                
+                // Bezel casing paint spec setup
+                const casingMat = new THREE.MeshStandardMaterial({
+                    color: this.getChassisColorHex(),
+                    roughness: 0.25,
+                    metalness: 0.8
+                });
+
+                const materials = [
+                    casingMat, // Right
+                    casingMat, // Left
+                    casingMat, // Top
+                    casingMat, // Bottom
+                    new THREE.MeshBasicMaterial({ map: this.frontTexture }), // Front Face
+                    new THREE.MeshStandardMaterial({ map: this.backTexture, roughness: 0.15, metalness: 0.4 })  // Back Face
+                ];
+
+                this.mesh = new THREE.Mesh(phoneGeo, materials);
+                this.mesh.position.set(this.x, this.y, this.z);
+                
+                // Rotates device so it rests cleanly flat on worktable surface
+                this.mesh.rotation.set(-Math.PI / 2, 0, 0);
+                this.mesh.castShadow = true;
+                this.mesh.receiveShadow = true;
+                this.mesh.userData = { type: "phone", parent: this, grabbable: true };
+
+                Workspace.scene.add(this.mesh);
+                Workspace.interactableObjects.push(this.mesh);
+
+                this.buildTrayHandle();
+            }
+
+            buildTrayHandle() {
+                // Generates physical brackets on the right-side lateral face to click-mount SIM profiles
+                const trayGeo = new THREE.BoxGeometry(0.01, 0.05, 0.006);
+                const trayMat = new THREE.MeshBasicMaterial({ color: 0xffcc00 });
+                this.trayMesh = new THREE.Mesh(trayGeo, trayMat);
+                
+                // Anchor offset to sit flushed on phone's side
+                this.trayMesh.position.set(0.068, 0, 0);
+                this.mesh.add(this.trayMesh);
+
+                this.trayMesh.userData = { type: "tray", parent: this };
+                Workspace.interactableObjects.push(this.trayMesh);
+            }
+
+            getChassisColorHex() {
+                const colors = {
+                    'matte-black': 0x141414, 'industrial-gray': 0x2e2e2e, 'monochrome-white': 0xdcdcdc,
+                    'natural-titanium': 0x9f9b93, 'product-red': 0xd92632, 'quite-black': 0x1c1c1c,
+                    'very-silver': 0xe0e0e0
+                };
+                return colors[this.color] || 0x222222;
+            }
+
+            triggerTrayCycle() {
+                // Cycles through available SIM cards when lateral physical bracket is touched
+                const simKeys = Object.keys(NetworkHub.sims);
+                const unassignedSims = simKeys.filter(num => !NetworkHub.sims[num].allocatedTo || NetworkHub.sims[num].allocatedTo === this.id);
+                
+                if (unassignedSims.length === 0) {
+                    NetworkHub.log(`Handset #${this.id}`, "Sim Action Error: No unassigned cards available in circulation.");
+                    return;
+                }
+
+                const currentIdx = unassignedSims.indexOf(this.currentSim);
+                let nextSim = null;
+                
+                if (currentIdx === -1 || currentIdx === unassignedSims.length - 1) {
+                    // Loop back or unmount
+                    nextSim = unassignedSims[0];
+                } else {
+                    nextSim = unassignedSims[currentIdx + 1];
+                }
+
+                if (this.currentSim) {
+                    NetworkHub.sims[this.currentSim].allocatedTo = null;
+                }
+
+                this.currentSim = nextSim;
+                NetworkHub.sims[nextSim].allocatedTo = this.id;
+                NetworkHub.log("Carrier Switch", `SIM Transponder +1 (${nextSim}) mounted in Handset #${this.id}`);
+
+                this.updateStatusBar();
+                this.queueUpdate();
+                NetworkHub.updateSimCount();
+            }
+
+            flipChassis() {
+                this.flipped = !this.flipped;
+                const targetRot = this.flipped ? Math.PI : 0;
+                
+                // Rotates 3D model to reveal physical spec configurations
+                this.mesh.rotation.y = targetRot;
+                NetworkHub.log("Workspace", `Handset #${this.id} inspect orientation modified.`);
+            }
+
+            queueUpdate() {
+                this.needsTextureUpdate = true;
+            }
+
+            renderToTexture() {
+                this.needsTextureUpdate = false;
+                
+                // Render Front
+                const frontEl = this.domElement.querySelector('.phone-front');
+                html2canvas(frontEl, {
+                    backgroundColor: null,
+                    logging: false,
+                    scale: 1.5,
+                    width: 260,
+                    height: 510
+                }).then(canvas => {
+                    const ctx = this.frontCanvas.getContext('2d');
+                    ctx.clearRect(0,0,260,510);
+                    ctx.drawImage(canvas, 0, 0);
+                    this.frontTexture.needsUpdate = true;
+                });
+
+                // Render dynamic Back specifications
+                const backHTML = `
+                    <div class="phone-face phone-back" style="width:260px; height:510px;">
+                        <div class="cam-housing">
+                            <div class="lens"></div>
+                        </div>
+                        <div class="hardware-info" style="margin-top:100px;">
+                            <div style="font-weight: bold; font-size:12px; margin-bottom:12px; color:#ffcc00;">DEVICE NODE-00${this.id}</div>
+                            <div style="font-size:10px; color:#aaa; margin-bottom:4px;">CHASSIS: ${this.model.toUpperCase()}</div>
+                            <div style="font-size:10px; color:#aaa;">FINISH: ${this.color.toUpperCase()}</div>
+                        </div>
+                        <div style="font-size:8px; opacity:0.5; font-weight:bold; letter-spacing:1px; color:#fff;">WORKSPACE SYSTEMS CORP</div>
+                    </div>
+                `;
+
+                const tempDiv = document.createElement('div');
+                tempDiv.style.position = 'absolute';
+                tempDiv.style.top = '-9999px';
+                tempDiv.innerHTML = backHTML;
+                document.body.appendChild(tempDiv);
+
+                html2canvas(tempDiv.firstElementChild, {
+                    backgroundColor: null,
+                    logging: false,
+                    scale: 1.5,
+                    width: 260,
+                    height: 510
+                }).then(canvas => {
+                    const ctx = this.backCanvas.getContext('2d');
+                    ctx.clearRect(0,0,260,510);
+                    ctx.drawImage(canvas, 0, 0);
+                    this.backTexture.needsUpdate = true;
+                    tempDiv.remove();
+                });
+            }
+
+            bindHtmlEvents() {
+                // Map App Close Button action
+                this.domElement.querySelectorAll('.app-close').forEach(btn => {
+                    btn.addEventListener('click', () => this.switchApp('launcher'));
+                });
+
+                // OS App Navigation Selector linking
+                this.domElement.querySelectorAll('[data-launch]').forEach(icon => {
+                    icon.addEventListener('click', () => this.switchApp(icon.dataset.launch));
+                });
+
+                // Bottom Home Bezel Action
+                const homeBtn = this.domElement.querySelector('.bottom-bezel .home-button');
+                if (homeBtn) homeBtn.addEventListener('click', () => this.switchApp('launcher'));
+                
+                const homeBar = this.domElement.querySelector('.home-bar');
+                if (homeBar) homeBar.addEventListener('click', () => this.switchApp('launcher'));
+
+                // Dialer Functionalities linking
+                const dialOutput = this.domElement.querySelector('.dialer-output');
+                this.domElement.querySelectorAll('.dial-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        dialOutput.innerText += btn.innerText;
+                        this.queueUpdate();
+                    });
+                });
+
+                this.domElement.querySelector('.phone-clear-trigger').addEventListener('click', () => {
+                    dialOutput.innerText = '';
+                    this.queueUpdate();
+                });
+
+                this.domElement.querySelector('.phone-call-trigger').addEventListener('click', () => {
+                    const target = dialOutput.innerText.trim();
+                    if(!this.currentSim) {
+                        NetworkHub.log(`Handset #${this.id}`, "Dial Error: Device has no SIM profile mounted in lateral tray slot.");
+                        return;
+                    }
+                    if(!target) return;
+
+                    this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                    this.domElement.querySelector('.dialer-pad').style.display = 'none';
+                    
+                    const stateBox = this.domElement.querySelector('.active-call-state');
+                    stateBox.style.display = 'block';
+                    stateBox.querySelector('.call-status-label').innerText = "ROUTING LINK...";
+                    
+                    const res = NetworkHub.initiateCall(this.currentSim, target, this.id);
+                    if(res === "FAILED") {
+                        stateBox.querySelector('.call-status-label').innerText = "UNREACHABLE";
+                    } else if(res === "BUSY") {
+                        stateBox.querySelector('.call-status-label').innerText = "CIRCUIT BUSY";
+                    } else {
+                        this.activeCallData = { role: 'caller', targetNumber: target };
+                    }
+                    this.queueUpdate();
+                });
+
+                this.domElement.querySelector('.phone-hangup-trigger').addEventListener('click', () => this.hangupCall(true));
+
+                // Incoming Call Handlers linking
+                this.domElement.querySelector('.accept-btn').addEventListener('click', () => {
+                    if(this.activeCallData && this.activeCallData.peerPhoneId) {
+                        NetworkHub.connectCall(this.id, this.activeCallData.peerPhoneId);
+                    }
+                });
+                this.domElement.querySelector('.decline-btn').addEventListener('click', () => this.hangupCall(true));
+
+                // Messaging Channel Event linking
+                this.domElement.querySelector('.back-to-threads-btn').addEventListener('click', () => {
+                    this.domElement.querySelector('[data-view="chat"]').style.display = 'none';
+                    this.domElement.querySelector('[data-view="threads"]').style.display = 'flex';
+                    this.renderThreadsList();
+                });
+
+                this.domElement.querySelector('.sms-send-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.sms-input-field');
+                    const text = input.value.trim();
+                    if (!text || !this.activeChatNumber || !this.currentSim) return;
+
+                    if (!NetworkHub.sims[this.currentSim].messages[this.activeChatNumber]) {
+                        NetworkHub.sims[this.currentSim].messages[this.activeChatNumber] = [];
+                    }
+                    NetworkHub.sims[this.currentSim].messages[this.activeChatNumber].push({
+                        direction: 'sent',
+                        text: text,
+                        senderPlatform: this.osType
+                    });
+
+                    this.renderChatWindow(this.activeChatNumber);
+                    NetworkHub.routeSMS(this.currentSim, this.activeChatNumber, text, this.id);
+                    input.value = '';
+                    this.queueUpdate();
+                });
+
+                // Social Netspace Auth UI linking
+                this.domElement.querySelector('.soc-login-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.soc-handle-input');
+                    let handle = input.value.trim();
+                    if(!handle) return;
+                    if(!handle.startsWith('@')) handle = '@' + handle;
+
+                    if(!NetworkHub.socialAccounts[handle]) {
+                        NetworkHub.socialAccounts[handle] = { handle: handle, followers: [], following: [] };
+                    }
+                    this.activeSocialUser = handle;
+                    this.renderSocialAppView();
+                });
+
+                this.domElement.querySelector('.soc-logout-trigger').addEventListener('click', () => {
+                    this.activeSocialUser = null;
+                    this.domElement.querySelector('.soc-main-screen').style.display = 'none';
+                    this.domElement.querySelector('.soc-auth-screen').style.display = 'flex';
+                    this.queueUpdate();
+                });
+
+                this.domElement.querySelector('.soc-post-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.soc-post-input');
+                    const val = input.value.trim();
+                    if(!val || !this.activeSocialUser) return;
+                    NetworkHub.publishSocialPost(this.activeSocialUser, val, this.id);
+                    input.value = '';
+                    this.queueUpdate();
+                });
+
+                this.domElement.querySelectorAll('.soc-tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        this.domElement.querySelectorAll('.soc-tab-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        this.activeSocialSubTab = btn.dataset.subtab;
+
+                        this.domElement.querySelectorAll('.soc-view-panel').forEach(p => p.classList.remove('active'));
+                        const panel = this.domElement.querySelector(`#soc-view-${this.activeSocialSubTab}`);
+                        if(panel) panel.classList.add('active');
+
+                        if(this.activeSocialSubTab === 'dms') {
+                            this.renderSocialDMView();
+                        }
+                        this.queueUpdate();
+                    });
+                });
+
+                // DM Channel Event linking
+                this.domElement.querySelector('.ns-dm-initiate-btn').addEventListener('click', () => {
+                    const select = this.domElement.querySelector('.ns-dm-initiate-select');
+                    const peer = select.value;
+                    if(!peer || peer === this.activeSocialUser) return;
+
+                    const threadKey = [this.activeSocialUser, peer].sort().join("<=>");
+                    if(!NetworkHub.netspaceDMs[threadKey]) {
+                        NetworkHub.netspaceDMs[threadKey] = [];
+                    }
+                    this.renderSocialDMView();
+                    this.domElement.querySelector('.soc-dms-thread-list').style.display = 'none';
+                    this.domElement.querySelector('.soc-dms-chat-panel').style.display = 'flex';
+                    this.renderSocialDMChat(peer);
+                    this.queueUpdate();
+                });
+
+                this.domElement.querySelector('.back-to-dm-list-btn').addEventListener('click', () => {
+                    this.domElement.querySelector('.soc-dms-chat-panel').style.display = 'none';
+                    this.domElement.querySelector('.soc-dms-thread-list').style.display = 'block';
+                    this.activeSocialDMPeer = null;
+                    this.renderSocialDMView();
+                    this.queueUpdate();
+                });
+
+                this.domElement.querySelector('.soc-dm-send-trigger').addEventListener('click', () => {
+                    const input = this.domElement.querySelector('.soc-dm-msg-input');
+                    const text = input.value.trim();
+                    if(!text || !this.activeSocialUser || !this.activeSocialDMPeer) return;
+
+                    NetworkHub.sendSocialDM(this.activeSocialUser, this.activeSocialDMPeer, text);
+                    
+                    if (this.activeSocialDMPeer === "@echo_bot") {
+                        setTimeout(() => {
+                            NetworkHub.sendSocialDM("@echo_bot", this.activeSocialUser, `VR Echo Payload Received: "${text}"`);
+                        }, 500);
+                    }
+                    
+                    input.value = '';
+                    this.queueUpdate();
+                });
+            }
+
+            initOS() {
+                this.updateStatusBar();
+                this.clockTick();
+            }
+
+            switchApp(appName) {
+                this.activeApp = appName;
+                this.domElement.querySelectorAll('.app-view').forEach(v => v.classList.remove('active'));
+                
+                const targetView = this.domElement.querySelector(`[data-app="${appName}"]`);
+                if(targetView) targetView.classList.add('active');
+
+                if (appName === 'messages') {
+                    this.renderThreadsList();
+                } else if (appName === 'contacts') {
+                    this.renderContactsList();
+                } else if (appName === 'netspace') {
+                    this.renderSocialAppView();
+                }
+                this.queueUpdate();
+            }
+
+            updateStatusBar() {
+                const tag = this.domElement.querySelector('.carrier-tag');
+                const bars = this.domElement.querySelector('.signal-bars');
+
+                if(this.currentSim) {
+                    tag.innerText = `+1 (${this.currentSim})`;
+                    bars.innerText = "▰▰▰▰";
+                    bars.style.color = "#00ff00";
+                } else {
+                    tag.innerText = "NO CELL LINK";
+                    bars.innerText = "▱▱▱▱";
+                    bars.style.color = "inherit";
+                }
+            }
+
+            clockTick() {
+                const now = new Date();
+                const hrs = now.getHours().toString().padStart(2, '0');
+                const mins = now.getMinutes().toString().padStart(2, '0');
+                this.domElement.querySelectorAll('.sim-time').forEach(el => {
+                    if (el) el.innerText = `${hrs}:${mins}`;
+                });
+                this.queueUpdate();
+            }
+
+            populateSimSelector() {
+                // Empty fallback on visual logic, calculations handled inside Three intersection cycles
+            }
+
+            triggerIncomingCall(fromNum, peerPhoneId) {
+                if(this.blockedNumbers.includes(fromNum)) return;
+                
+                this.activeCallData = { role: 'receiver', targetNumber: fromNum, peerPhoneId: peerPhoneId };
+                const overlay = this.domElement.querySelector('.inc-call-overlay');
+                overlay.querySelector('.inc-caller-id').innerText = `+1 (${fromNum})`;
+                overlay.classList.add('active');
+                
+                this.switchApp('phone');
+                this.queueUpdate();
+            }
+
+            establishCallConnection() {
+                this.switchApp('phone');
+                this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                this.domElement.querySelector('.phone-call-trigger').style.display = 'none';
+                this.domElement.querySelector('.dialer-pad').style.display = 'none';
+                
+                const stateBox = this.domElement.querySelector('.active-call-state');
+                stateBox.style.display = 'block';
+                stateBox.querySelector('.call-status-label').innerText = "LIVE LINK CONNECTED";
+                
+                this.startCallTimer();
+                this.queueUpdate();
+            }
+
+            startCallTimer() {
+                let sec = 0;
+                const display = this.domElement.querySelector('.call-timer');
+                display.innerText = "00:00";
+                clearInterval(this.callTimerInterval);
+                this.callTimerInterval = setInterval(() => {
+                    sec++;
+                    const m = Math.floor(sec/60).toString().padStart(2, '0');
+                    const s = (sec%60).toString().padStart(2, '0');
+                    display.innerText = `${m}:${s}`;
+                    this.queueUpdate();
+                }, 1000);
+            }
+
+            hangupCall(notifyNetwork = true) {
+                clearInterval(this.callTimerInterval);
+                if(notifyNetwork) {
+                    NetworkHub.terminateCall(this.id);
+                }
+                this.domElement.querySelector('.inc-call-overlay').classList.remove('active');
+                this.domElement.querySelector('.active-call-state').style.display = 'none';
+                this.domElement.querySelector('.phone-call-trigger').style.display = 'block';
+                this.domElement.querySelector('.dialer-pad').style.display = 'grid';
+                this.domElement.querySelector('.dialer-output').innerText = '';
+                this.activeCallData = null;
+                this.queueUpdate();
+            }
+
+            receiveSMS(fromNum, text, platformLabel = 'ios') {
+                if (!this.currentSim) return;
+                if (!NetworkHub.sims[this.currentSim].messages[fromNum]) {
+                    NetworkHub.sims[this.currentSim].messages[fromNum] = [];
+                }
+                NetworkHub.sims[this.currentSim].messages[fromNum].push({
+                    direction: 'rcvd',
+                    text: text,
+                    senderPlatform: platformLabel
+                });
+
+                if (this.activeApp === 'messages') {
+                    this.renderThreadsList();
+                    if (this.activeChatNumber === fromNum) {
+                        this.renderChatWindow(fromNum);
+                    }
+                }
+                this.queueUpdate();
+            }
+
+            renderContactsList() {
+                const container = this.domElement.querySelector('.contacts-stream');
+                container.innerHTML = '';
+                this.contacts.forEach(c => {
+                    const el = document.createElement('div');
+                    el.className = 'contacts-item';
+                    el.innerHTML = `
+                        <div class="contact-monogram-circle">${c.monogram}</div>
+                        <div>
+                            <div style="font-weight:bold;">${c.name}</div>
+                            <div style="font-size:9px; color:gray;">+1 (${c.number})</div>
+                        </div>
+                    `;
+                    el.addEventListener('click', () => {
+                        this.switchApp('messages');
+                        this.domElement.querySelector('[data-view="threads"]').style.display = 'none';
+                        this.domElement.querySelector('[data-view="chat"]').style.display = 'flex';
+                        this.renderChatWindow(c.number);
+                    });
+                    container.appendChild(el);
+                });
+            }
+
+            renderThreadsList() {
+                const container = this.domElement.querySelector('.msg-threads');
+                container.innerHTML = '';
+
+                if (!this.currentSim || !NetworkHub.sims[this.currentSim]) {
+                    container.innerHTML = `<div style="text-align:center; padding:20px; color:gray;">No SIM Card Mounted.</div>`;
+                    return;
+                }
+
+                const threads = Object.keys(NetworkHub.sims[this.currentSim].messages);
+                if (threads.length === 0) {
+                    // Seed automated GC thread
+                    NetworkHub.sims[this.currentSim].messages["12345"] = [{
+                        direction: 'rcvd',
+                        text: "Virtual channel initialized. Transponder online.",
+                        senderPlatform: "ios"
+                    }];
+                    threads.push("12345");
+                }
+
+                threads.forEach(num => {
+                    const row = document.createElement('div');
+                    row.className = 'thread-row';
+                    const list = NetworkHub.sims[this.currentSim].messages[num];
+                    const lastMsg = list[list.length - 1];
+
+                    row.innerHTML = `
+                        <div style="font-weight:bold;">+1 (${num})</div>
+                        <div style="color:gray; font-size:9px; overflow:hidden; text-overflow:ellipsis;">${lastMsg ? lastMsg.text : ''}</div>
+                    `;
+                    row.addEventListener('click', () => {
+                        this.domElement.querySelector('[data-view="threads"]').style.display = 'none';
+                        this.domElement.querySelector('[data-view="chat"]').style.display = 'flex';
+                        this.renderChatWindow(num);
+                    });
+                    container.appendChild(row);
+                });
+            }
+
+            renderChatWindow(num) {
+                this.activeChatNumber = num;
+                const win = this.domElement.querySelector('[data-view="chat"]');
+                win.querySelector('.active-chat-title').innerText = `+1 (${num})`;
+
+                const stream = win.querySelector('.chat-stream');
+                stream.innerHTML = '';
+
+                const msgs = NetworkHub.sims[this.currentSim].messages[num] || [];
+                msgs.forEach(m => {
+                    const bub = document.createElement('div');
+                    const platformClass = m.direction === 'rcvd' ? `platform-${m.senderPlatform}` : '';
+                    bub.className = `chat-bubble ${m.direction} ${platformClass}`;
+                    bub.innerText = m.text;
+                    stream.appendChild(bub);
+                });
+                stream.scrollTop = stream.scrollHeight;
+                this.queueUpdate();
+            }
+
+            renderSocialAppView() {
+                const auth = this.domElement.querySelector('.soc-auth-screen');
+                const main = this.domElement.querySelector('.soc-main-screen');
+
+                if(!this.activeSocialUser) {
+                    main.style.display = 'none';
+                    auth.style.display = 'flex';
+                } else {
+                    auth.style.display = 'none';
+                    main.style.display = 'flex';
+                    this.refreshSocialFeed();
+                }
+                this.queueUpdate();
+            }
+
+            refreshSocialFeed() {
+                const timeline = this.domElement.querySelector('.soc-timeline');
+                timeline.innerHTML = '';
+                NetworkHub.socialPosts.forEach(post => {
+                    const card = document.createElement('div');
+                    card.className = 'soc-post';
+                    card.innerHTML = `
+                        <div class="soc-handle">${post.sender}</div>
+                        <div style="color:#fff; margin-top:2px;">${post.content}</div>
+                    `;
+                    timeline.appendChild(card);
+                });
+                this.queueUpdate();
+            }
+
+            renderSocialDMView() {
+                const dropdown = this.domElement.querySelector('.ns-dm-initiate-select');
+                const list = this.domElement.querySelector('.ns-dm-contacts-target-list');
+                dropdown.innerHTML = '<option value="">[ Choose peer ]</option>';
+                list.innerHTML = '';
+
+                Object.keys(NetworkHub.socialAccounts).forEach(acc => {
+                    if (acc !== this.activeSocialUser) {
+                        const opt = document.createElement('option');
+                        opt.value = acc;
+                        opt.innerText = acc;
+                        dropdown.appendChild(opt);
+                    }
+                });
+
+                Object.keys(NetworkHub.netspaceDMs).forEach(key => {
+                    const parts = key.split("<=>");
+                    if (parts.includes(this.activeSocialUser)) {
+                        const peer = parts.find(p => p !== this.activeSocialUser);
+                        const row = document.createElement('div');
+                        row.className = 'ns-dm-list-row';
+                        row.style.background = '#111';
+                        row.style.padding = '5px';
+                        row.style.marginBottom = '2px';
+                        row.innerHTML = `<span style="font-weight:bold;">👤 DM: ${peer}</span>`;
+                        row.addEventListener('click', () => {
+                            this.domElement.querySelector('.soc-dms-thread-list').style.display = 'none';
+                            this.domElement.querySelector('.soc-dms-chat-panel').style.display = 'flex';
+                            this.renderSocialDMChat(peer);
+                        });
+                        list.appendChild(row);
+                    }
+                });
+            }
+
+            renderSocialDMChat(peer) {
+                this.activeSocialDMPeer = peer;
+                const panel = this.domElement.querySelector('.soc-dms-chat-panel');
+                panel.querySelector('.dm-peer-title').innerText = peer;
+
+                const stream = panel.querySelector('.soc-dm-window-stream');
+                stream.innerHTML = '';
+
+                const threadKey = [this.activeSocialUser, peer].sort().join("<=>");
+                const logs = NetworkHub.netspaceDMs[threadKey] || [];
+
+                logs.forEach(msg => {
+                    const bub = document.createElement('div');
+                    bub.style.padding = '4px 6px';
+                    bub.style.borderRadius = '4px';
+                    bub.style.fontSize = '9px';
+                    bub.style.maxWidth = '85%';
+                    if (msg.sender === this.activeSocialUser) {
+                        bub.style.background = '#2b4a5f';
+                        bub.style.alignSelf = 'flex-end';
+                    } else {
+                        bub.style.background = '#1a1a1a';
+                        bub.style.alignSelf = 'flex-start';
+                    }
+                    bub.innerHTML = `<span style="display:block; font-size:7px; color:gray;">${msg.sender}</span>${msg.content}`;
+                    stream.appendChild(bub);
+                });
+                stream.scrollTop = stream.scrollHeight;
+                this.queueUpdate();
+            }
+        }
+
+        // VR Physical Interactive Router Instance
+        class RouterInstance {
+            constructor(id, x, y, z, ssid) {
+                this.id = id;
+                this.x = x;
+                this.y = y;
+                this.z = z;
+                this.ssid = ssid;
+
+                this.buildGeometry();
+            }
+
+            buildGeometry() {
+                // Models routers as standardized flat dark-gray mesh with antennas
+                const group = new THREE.Group();
+                group.position.set(this.x, this.y, this.z);
+
+                const bodyGeo = new THREE.BoxGeometry(0.12, 0.04, 0.09);
+                const bodyMat = new THREE.MeshStandardMaterial({
+                    color: 0x18181a,
+                    roughness: 0.4
+                });
+                const body = new THREE.Mesh(bodyGeo, bodyMat);
+                body.castShadow = true;
+                body.receiveShadow = true;
+                group.add(body);
+
+                // Simple antenna geometry
+                const antGeo = new THREE.CylinderGeometry(0.003, 0.003, 0.08);
+                const antMat = new THREE.MeshBasicMaterial({ color: 0x333333 });
+                
+                const a1 = new THREE.Mesh(antGeo, antMat);
+                a1.position.set(-0.04, 0.04, -0.04);
+                group.add(a1);
+
+                const a2 = new THREE.Mesh(antGeo, antMat);
+                a2.position.set(0.04, 0.04, -0.04);
+                group.add(a2);
+
+                // LED indicator
+                const ledGeo = new THREE.SphereGeometry(0.004, 8, 8);
+                const ledMat = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+                const led = new THREE.Mesh(ledGeo, ledMat);
+                led.position.set(-0.04, 0.015, 0.046);
+                group.add(led);
+
+                group.userData = { type: "router", id: this.id, parent: this, grabbable: true };
+                Workspace.scene.add(group);
+                Workspace.interactableObjects.push(body); // Register standard raycast grab boundaries
+
+                this.mesh = group;
+            }
+        }
+
+        // Program entry assembly triggers
+        window.onload = () => {
+            NetworkHub.init();
+            Workspace.init();
+        };
+    </script>
+</body>
+</html>
